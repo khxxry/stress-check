@@ -8,28 +8,28 @@ export interface ScoringResult {
 export type Gender = 'male' | 'female';
 
 // Subscale definition
-const subscaleConfig = {
-  jobQuantity: { questions: [1, 2, 3], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]) },
-  jobQuality: { questions: [4, 5, 6], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]) },
-  physicalBurden: { questions: [7], formula: (scores: number[]) => 5 - scores[0] },
-  jobControl: { questions: [8, 9, 10], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]) },
-  skillUtilization: { questions: [11], formula: (scores: number[]) => scores[0] },
-  interpersonal: { questions: [12, 13, 14], formula: (scores: number[]) => 10 - (scores[0] + scores[1]) + scores[2] },
-  environment: { questions: [15], formula: (scores: number[]) => 5 - scores[0] },
-  suitability: { questions: [16], formula: (scores: number[]) => 5 - scores[0] },
-  motivation: { questions: [17], formula: (scores: number[]) => 5 - scores[0] },
+const subscaleConfig: Record<string, { questions: number[], formula: (scores: number[]) => number, direction: 'normal' | 'reverse' }> = {
+  jobQuantity: { questions: [1, 2, 3], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]), direction: 'reverse' },
+  jobQuality: { questions: [4, 5, 6], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]), direction: 'reverse' },
+  physicalBurden: { questions: [7], formula: (scores: number[]) => 5 - scores[0], direction: 'reverse' },
+  jobControl: { questions: [8, 9, 10], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]), direction: 'normal' },
+  skillUtilization: { questions: [11], formula: (scores: number[]) => scores[0], direction: 'normal' },
+  interpersonal: { questions: [12, 13, 14], formula: (scores: number[]) => 10 - (scores[0] + scores[1]) + scores[2], direction: 'normal' },
+  environment: { questions: [15], formula: (scores: number[]) => 5 - scores[0], direction: 'reverse' },
+  suitability: { questions: [16], formula: (scores: number[]) => 5 - scores[0], direction: 'normal' },
+  motivation: { questions: [17], formula: (scores: number[]) => 5 - scores[0], direction: 'normal' },
   
-  vigor: { questions: [18, 19, 20], formula: (scores: number[]) => scores[0] + scores[1] + scores[2] },
-  irritation: { questions: [21, 22, 23], formula: (scores: number[]) => scores[0] + scores[1] + scores[2] },
-  fatigue: { questions: [24, 25, 26], formula: (scores: number[]) => scores[0] + scores[1] + scores[2] },
-  anxiety: { questions: [27, 28, 29], formula: (scores: number[]) => scores[0] + scores[1] + scores[2] },
-  depression: { questions: [30, 31, 32, 33, 34, 35], formula: (scores: number[]) => scores.reduce((a, b) => a + b, 0) },
-  somatic: { questions: [36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46], formula: (scores: number[]) => scores.reduce((a, b) => a + b, 0) },
+  vigor: { questions: [18, 19, 20], formula: (scores: number[]) => scores[0] + scores[1] + scores[2], direction: 'normal' },
+  irritation: { questions: [21, 22, 23], formula: (scores: number[]) => scores[0] + scores[1] + scores[2], direction: 'reverse' },
+  fatigue: { questions: [24, 25, 26], formula: (scores: number[]) => scores[0] + scores[1] + scores[2], direction: 'reverse' },
+  anxiety: { questions: [27, 28, 29], formula: (scores: number[]) => scores[0] + scores[1] + scores[2], direction: 'reverse' },
+  depression: { questions: [30, 31, 32, 33, 34, 35], formula: (scores: number[]) => scores.reduce((a, b) => a + b, 0), direction: 'reverse' },
+  somatic: { questions: [36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46], formula: (scores: number[]) => scores.reduce((a, b) => a + b, 0), direction: 'reverse' },
   
-  supervisorSupport: { questions: [47, 50, 53], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]) },
-  colleagueSupport: { questions: [48, 51, 54], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]) },
-  familySupport: { questions: [49, 52, 55], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]) },
-  satisfaction: { questions: [56, 57], formula: (scores: number[]) => 10 - (scores[0] + scores[1]) },
+  supervisorSupport: { questions: [47, 50, 53], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]), direction: 'normal' },
+  colleagueSupport: { questions: [48, 51, 54], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]), direction: 'normal' },
+  familySupport: { questions: [49, 52, 55], formula: (scores: number[]) => 15 - (scores[0] + scores[1] + scores[2]), direction: 'normal' },
+  satisfaction: { questions: [56, 57], formula: (scores: number[]) => 10 - (scores[0] + scores[1]), direction: 'normal' },
 };
 
 // Conversion Table (Mapping Raw to Standard 1-5)
@@ -128,7 +128,7 @@ export function calculateScoring(answers: Record<number, number>, gender: Gender
        const [min, max] = table[i];
        if (min === 0 && max === 0) continue; // Skip skipped standard scores
        if (rawSum >= min && rawSum <= max) {
-         standardScore = i + 1;
+         standardScore = config.direction === 'reverse' ? 5 - i : i + 1;
          break;
        }
     }

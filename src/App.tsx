@@ -50,13 +50,13 @@ const App: React.FC = () => {
 
   const radarData = result ? {
     labels: [
-      'Quantity', 'Quality', 'Control', 'Interpersonal', 'Vigor', 
-      'Irritation', 'Fatigue', 'Anxiety', 'Depression', 'Somatic',
-      'Sup. Support', 'Col. Support', 'Satisfac.'
+      '仕事の量', '仕事の質', '仕事の裁量度', '職場の対人関係', '活気', 
+      'イライラ感', '疲労感', '不安感', '抑うつ感', '身体愁訴',
+      '上司のサポート', '同僚のサポート', '仕事・生活の満足度'
     ],
     datasets: [
       {
-        label: 'Your Stress Profile (1-5, higher is better)',
+        label: 'ストレスプロフィール（5段階評価：高いほど良好）',
         data: [
           result.subscales.jobQuantity,
           result.subscales.jobQuality,
