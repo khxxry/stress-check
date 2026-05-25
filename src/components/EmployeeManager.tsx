@@ -26,6 +26,15 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify, acti
 
   const [validationError, setValidationError] = useState('');
 
+  // ページネーション状態
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+
+  // 検索ワードが変わったらページ数を1ページ目にリセット
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
   // LocalStorageから自テナントの従業員リストをロード
   useEffect(() => {
     const stored = localStorage.getItem('stress_check_employees');
@@ -36,6 +45,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify, acti
     } else {
       setEmployees([]);
     }
+    setCurrentPage(1); // テナント切り替え時にページをリセット
   }, [activeCorpId]);
 
   // マージしてLocalStorage全体に保存するヘルパー関数（他企業のデータを破壊しない）
@@ -214,6 +224,13 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify, acti
     );
   });
 
+  // ページネーション計算
+  const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
+  const paginatedEmployees = filteredEmployees.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
   return (
     <div className="employee-manager-container fade-in">
       <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
@@ -263,14 +280,14 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify, acti
               </tr>
             </thead>
             <tbody>
-              {filteredEmployees.length === 0 ? (
+              {paginatedEmployees.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
                     該当する従業員が見つかりません。
                   </td>
                 </tr>
               ) : (
-                filteredEmployees.map((emp) => (
+                paginatedEmployees.map((emp) => (
                   <tr key={emp.employeeCode} style={{ borderBottom: '1px solid #f1f5f9' }} className="table-row">
                     <td style={{ padding: '12px 16px', fontWeight: 600, fontFamily: 'monospace' }}>{emp.employeeCode}</td>
                     <td style={{ padding: '12px 16px' }}>
@@ -303,6 +320,79 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify, acti
               )}
             </tbody>
           </table>
+
+          {/* ページネーションコントロールバー */}
+          {filteredEmployees.length > 0 && (
+            <div className="pagination-bar flex items-center justify-between p-4 border-t border-gray-200" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div className="text-muted" style={{ fontSize: '0.82rem', fontWeight: 500 }}>
+                全 <strong>{filteredEmployees.length}</strong> 件中 <strong>{filteredEmployees.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}〜{Math.min(filteredEmployees.length, currentPage * itemsPerPage)}</strong> 件を表示
+              </div>
+
+              <div className="flex gap-4 items-center" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* ページサイズセレクター */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>表示件数:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', fontWeight: 600, outline: 'none' }}
+                  >
+                    <option value={10}>10 件</option>
+                    <option value={20}>20 件</option>
+                    <option value={50}>50 件</option>
+                    <option value={100}>100 件</option>
+                  </select>
+                </div>
+
+                {/* ページ選択ボタン */}
+                {totalPages > 1 && (
+                  <div className="flex gap-1" style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      className="pagination-btn"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.5 : 1, fontSize: '0.8rem', fontWeight: 700 }}
+                    >
+                      前へ
+                    </button>
+                    
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                      <button
+                        key={pageNum}
+                        className={`pagination-btn ${currentPage === pageNum ? 'active' : ''}`}
+                        onClick={() => setCurrentPage(pageNum)}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '4px',
+                          border: '1px solid',
+                          borderColor: currentPage === pageNum ? 'var(--primary)' : '#cbd5e1',
+                          background: currentPage === pageNum ? 'linear-gradient(135deg, var(--primary) 0%, #1e3a8a 100%)' : 'white',
+                          color: currentPage === pageNum ? 'white' : 'var(--text-main)',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+
+                    <button
+                      className="pagination-btn"
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.5 : 1, fontSize: '0.8rem', fontWeight: 700 }}
+                    >
+                      次へ
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 登録・編集ドロワー（フォーム） */}
