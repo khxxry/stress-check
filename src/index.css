@@ -37,9 +37,13 @@ body {
   background: var(--card-bg);
   backdrop-filter: blur(10px);
   border-radius: var(--border-radius);
-  padding: 2rem;
+  padding: 2.5rem;
   box-shadow: var(--shadow);
   border: 1px solid rgba(255, 255, 255, 0.2);
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .btn {
@@ -87,9 +91,13 @@ body {
 }
 
 .question-text {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+  min-height: 4.5rem;
+  display: flex;
+  align-items: center;
 }
 
 .options-grid {
@@ -164,6 +172,8 @@ body {
 .slide-content {
   transition: transform 0.30s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
   opacity: 1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .slide-out-left {
