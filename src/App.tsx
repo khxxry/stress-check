@@ -256,7 +256,7 @@ const App: React.FC = () => {
               </div>
 
               {/* スライドコンテナ */}
-              <div className="slide-container" style={{ minHeight: '320px' }}>
+              <div className="slide-container" style={{ minHeight: '290px' }}>
                 <div className={`slide-content ${
                   isAnimating 
                     ? (slideDirection === 'next' ? 'slide-out-left' : 'slide-out-right') 
@@ -278,7 +278,7 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-between mt-6 pt-4" style={{ borderTop: '1px solid #e2e8f0' }}>
+              <div className="question-footer">
                 <button 
                   className="btn btn-outline" 
                   disabled={currentIndex === 0 || isAnimating}
@@ -286,8 +286,8 @@ const App: React.FC = () => {
                 >
                   <ArrowLeft size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 戻る
                 </button>
-                <span className="text-muted" style={{ fontSize: '0.8rem', alignSelf: 'center' }}>
-                  ※キーボードの [1]~[4] で選択、[←] または [BS] で戻れます
+                <span className="keyboard-guide">
+                  ※キーボードの [1]~[4] で回答、[←] または [BS] で戻れます
                 </span>
               </div>
             </div>

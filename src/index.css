@@ -41,9 +41,16 @@ body {
   box-shadow: var(--shadow);
   border: 1px solid rgba(255, 255, 255, 0.2);
   width: 100%;
-  max-width: 640px;
+  max-width: 600px; /* 視線移動を最適化するため最大幅を600pxへスマート化 */
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 1.5rem; /* スマホではパディングを縮めて画面を広く使用 */
+    border-radius: 8px;
+  }
 }
 
 .btn {
@@ -359,5 +366,33 @@ body {
 
 .form-control:focus {
   border-color: var(--primary);
+}
+
+/* レスポンシブフッターとキーボードガイド */
+.question-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.keyboard-guide {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  align-self: center;
+}
+
+@media (max-width: 640px) {
+  .keyboard-guide {
+    display: none; /* スマホやタブレットなどのモバイル端末ではキーボードガイドを非表示にする */
+  }
+  .question-footer {
+    justify-content: center; /* モバイルでは戻るボタンを押しやすく中央寄せに配置 */
+  }
 }
 
