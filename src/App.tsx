@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ExamineePortal } from './components/ExamineePortal';
 import { AdminPortal } from './components/AdminPortal';
-import { CampaignSettings, ConsentSettings, InterviewSettings, Employee } from './types';
+import { CampaignSettings, ConsentSettings, InterviewSettings, Employee, ExamineeResult } from './types';
+import { calculateScoring, Gender } from './utils/scoring';
 import { Eye, Settings, Bell } from 'lucide-react';
 
 type Mode = 'examinee' | 'admin';
@@ -54,44 +55,108 @@ const App: React.FC = () => {
       localStorage.setItem('stress_check_interview', JSON.stringify(defaultInterview));
     }
 
-    // 4. 従業員マスタシードデータ (3名)
+    // 4. 従業員マスタシードデータ (16名 - 組織分析用に拡張)
     if (!localStorage.getItem('stress_check_employees')) {
       const defaultEmployees: Employee[] = [
-        {
-          employeeCode: 'EMP001',
-          name: '山田 太郎',
-          nameKana: 'ヤマダ タロウ',
-          gender: 'male',
-          email: 'yamada@company.com',
-          birthDate: '1985-04-12',
-          status: 'active'
-        },
-        {
-          employeeCode: 'EMP002',
-          name: '佐藤 花子',
-          nameKana: 'サトウ ハナコ',
-          gender: 'female',
-          email: 'sato@company.com',
-          birthDate: '1992-08-23',
-          status: 'active'
-        },
-        {
-          employeeCode: 'EMP003',
-          name: '鈴木 一郎',
-          nameKana: 'スズキ イチロウ',
-          gender: 'male',
-          email: 'suzuki@company.com',
-          birthDate: '1978-11-30',
-          status: 'active'
-        }
+        // 技術開発部: 12名
+        { employeeCode: 'EMP001', name: '山田 太郎', nameKana: 'ヤマダ タロウ', gender: 'male', email: 'yamada@company.com', birthDate: '1985-04-12', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP002', name: '佐藤 花子', nameKana: 'サトウ ハナコ', gender: 'female', email: 'sato@company.com', birthDate: '1992-08-23', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP003', name: '鈴木 一郎', nameKana: 'スズキ イチロウ', gender: 'male', email: 'suzuki@company.com', birthDate: '1978-11-30', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP004', name: '高橋 健二', nameKana: 'タカハシ ケンジ', gender: 'male', email: 'takahashi@company.com', birthDate: '1989-05-15', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP005', name: '田中 裕子', nameKana: 'タナカ ユウコ', gender: 'female', email: 'tanaka@company.com', birthDate: '1995-12-04', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP006', name: '伊藤 茂', nameKana: 'イトウ シゲル', gender: 'male', email: 'ito@company.com', birthDate: '1972-07-18', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP007', name: '渡辺 恵', nameKana: 'ワタナベ メグミ', gender: 'female', email: 'watanabe@company.com', birthDate: '1988-02-09', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP008', name: '中村 淳', nameKana: 'ナカムラ ジュン', gender: 'male', email: 'nakamura@company.com', birthDate: '1981-09-27', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP009', name: '小林 礼子', nameKana: 'コバヤシ レイコ', gender: 'female', email: 'kobayashi@company.com', birthDate: '1994-06-14', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP010', name: '加藤 誠', nameKana: 'カトウ マコト', gender: 'male', email: 'kato@company.com', birthDate: '1980-03-31', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP011', name: '吉田 明美', nameKana: 'ヨシダ アケミ', gender: 'female', email: 'yoshida@company.com', birthDate: '1987-11-20', status: 'active', department: '技術開発部' },
+        { employeeCode: 'EMP012', name: '佐々木 弘', nameKana: 'ササキ ヒロシ', gender: 'male', email: 'sasaki@company.com', birthDate: '1975-10-05', status: 'active', department: '技術開発部' },
+
+        // グローバル営業部: 4名
+        { employeeCode: 'EMP013', name: '林 直樹', nameKana: 'ハヤシ ナオキ', gender: 'male', email: 'hayashi@company.com', birthDate: '1983-01-22', status: 'active', department: 'グローバル営業部' },
+        { employeeCode: 'EMP014', name: '清水 まどか', nameKana: 'シミズ マドカ', gender: 'female', email: 'shimizu@company.com', birthDate: '1991-04-17', status: 'active', department: 'グローバル営業部' },
+        { employeeCode: 'EMP015', name: '山崎 拓也', nameKana: 'ヤマザキ タクヤ', gender: 'male', email: 'yamazaki@company.com', birthDate: '1986-09-08', status: 'active', department: 'グローバル営業部' },
+        { employeeCode: 'EMP016', name: '森 佳代子', nameKana: 'モリ カヨコ', gender: 'female', email: 'mori@company.com', birthDate: '1993-11-12', status: 'active', department: 'グローバル営業部' }
       ];
       localStorage.setItem('stress_check_employees', JSON.stringify(defaultEmployees));
+    }
+
+    // 5. 受検結果ログのシード生成 (プログラムによる一括シード計算)
+    if (!localStorage.getItem('stress_check_results')) {
+      const seedResults: ExamineeResult[] = [];
+
+      // A. 技術開発部: 10名受検完了 (匿名性保護 10名基準を突破)
+      for (let i = 1; i <= 10; i++) {
+        const empCode = `EMP${String(i).padStart(3, '0')}`;
+        const isFemale = i === 2 || i === 5 || i === 7 || i === 9;
+        const gender: Gender = isFemale ? 'female' : 'male';
+        
+        // ダミー回答の生成 (i <= 3 は高ストレス、それ以外は低ストレス)
+        const dummyAnswers: Record<number, number> = {};
+        for (let q = 1; q <= 57; q++) {
+          const isStressy = i <= 3;
+          if (isStressy) {
+            dummyAnswers[q] = q % 3 === 0 ? 1 : 4; // 高ストレス
+          } else {
+            dummyAnswers[q] = q % 3 === 0 ? 4 : 1; // 低ストレス
+          }
+        }
+
+        const score = calculateScoring(dummyAnswers, gender);
+        seedResults.push({
+          id: `${empCode}-seed`,
+          employeeCode: empCode,
+          campaignName: '2026年度 春期定期ストレスチェック',
+          answers: dummyAnswers,
+          subscales: score.subscales,
+          totalReactionScore: score.totalReactionScore,
+          totalStressorSupportScore: score.totalStressorSupportScore,
+          isHighStress: score.isHighStress,
+          consentDisclose: i !== 5, // EMP005 は開示「不同意」➜ マスキング検証用
+          requestInterview: i === 1, // EMP001 は医師面接を希望
+          interviewDetails: i === 1 ? {
+            phone: '090-1234-5678',
+            email: 'yamada@company.com',
+            preferredSlots: ['6月1日 午前10時', '6月2日 午後14時', '6月3日 終日可'],
+            comments: '最近新しいシステム開発で残業が増え、疲労が溜まっています。'
+          } : undefined,
+          completedAt: new Date(now.getTime() - i * 24 * 60 * 60 * 1000).toISOString()
+        });
+      }
+
+      // B. グローバル営業部: 3名受検完了 (匿名性保護 10名基準未満 ➜ ロック検証用)
+      for (let i = 13; i <= 15; i++) {
+        const empCode = `EMP${String(i).padStart(3, '0')}`;
+        const gender: Gender = i === 14 ? 'female' : 'male';
+        
+        const dummyAnswers: Record<number, number> = {};
+        for (let q = 1; q <= 57; q++) {
+          dummyAnswers[q] = q % 3 === 0 ? 3 : 2; // 中ストレス度
+        }
+
+        const score = calculateScoring(dummyAnswers, gender);
+        seedResults.push({
+          id: `${empCode}-seed`,
+          employeeCode: empCode,
+          campaignName: '2026年度 春期定期ストレスチェック',
+          answers: dummyAnswers,
+          subscales: score.subscales,
+          totalReactionScore: score.totalReactionScore,
+          totalStressorSupportScore: score.totalStressorSupportScore,
+          isHighStress: score.isHighStress,
+          consentDisclose: true,
+          requestInterview: false,
+          completedAt: new Date(now.getTime() - (i - 10) * 24 * 60 * 60 * 1000).toISOString()
+        });
+      }
+
+      localStorage.setItem('stress_check_results', JSON.stringify(seedResults));
     }
   }, []);
 
   // 日付を input type="datetime-local" のフォーマットに変換するヘルパー
   const formatDateToDateTimeLocal = (date: Date): string => {
-    const tzOffset = date.getTimezoneOffset() * 60000; // offsets in milliseconds
+    const tzOffset = date.getTimezoneOffset() * 60000;
     const localISOTime = (new Date(date.getTime() - tzOffset)).toISOString().slice(0, 16);
     return localISOTime;
   };

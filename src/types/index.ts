@@ -6,8 +6,9 @@ export interface Employee {
   nameKana: string;
   gender: Gender;
   email: string;
-  birthDate: string; // YYYY-MM-DD
+  birthDate: string;
   status: 'active' | 'inactive';
+  department: string; // 部署情報（組織分析に使用）
 }
 
 export interface CampaignSettings {

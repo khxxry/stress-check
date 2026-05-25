@@ -1,15 +1,60 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CampaignSettings, ConsentSettings, InterviewSettings, ExamineeResult, Employee } from '../types';
 import { EmployeeManager } from './EmployeeManager';
-import { Radar } from 'react-chartjs-2';
-import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check } from 'lucide-react';
+import { Radar, Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  Tooltip as ChartTooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title
+} from 'chart.js';
+import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, Upload, AlertCircle, RefreshCw, Mail, Download, BarChart2 } from 'lucide-react';
+
+ChartJS.register(
+  RadialLinearScale,
+  PointElement,
+  LineElement,
+  Filler,
+  ChartTooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title
+);
 
 interface AdminPortalProps {
   onNotify: (message: string, type: 'success' | 'error') => void;
 }
 
+interface CSVRow {
+  employeeCode: string;
+  name: string;
+  nameKana: string;
+  gender: 'male' | 'female';
+  email: string;
+  birthDate: string;
+  department: string;
+}
+
+interface ParsedCSVItem {
+  id: number;
+  data: CSVRow;
+  errors: Record<string, string>;
+}
+
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [activeTab, setActiveTab] = useState<'wizard' | 'results' | 'employees'>('wizard');
+  const [resultsSubTab, setResultsSubTab] = useState<'list' | 'dashboard'>('list');
   
   // ==========================================
   // 1. 管理者設定状態 (Wizard)
@@ -44,6 +89,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [selectedResult, setSelectedResult] = useState<ExamineeResult | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
+  // ==========================================
+  // 3. スマートCSVインポート状態
+  // ==========================================
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [parsedItems, setParsedItems] = useState<ParsedCSVItem[]>([]);
+  const [hasImportErrors, setHasImportErrors] = useState(false);
+  const [duplicateOption, setDuplicateOption] = useState<'overwrite' | 'skip'>('overwrite');
+
+  // ==========================================
+  // 4. 組織分析ダッシュボード状態
+  // ==========================================
+  const [selectedDept, setSelectedDept] = useState<string>('');
+
+  // ==========================================
+  // 5. 催促メールシミュレーター状態
+  // ==========================================
+  const [isReminderOpen, setIsReminderOpen] = useState(false);
+  const [reminderTargetCount, setReminderTargetCount] = useState(0);
+  const [isReminding, setIsReminding] = useState(false);
+  const [reminderProgress, setReminderProgress] = useState(0);
+  const [reminderCurrentName, setReminderCurrentName] = useState('');
+
   // 設定のロード
   useEffect(() => {
     const storedCampaign = localStorage.getItem('stress_check_campaign');
@@ -74,7 +141,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       setNotificationEmails(intv.notificationEmails);
     }
 
-    // 結果と従業員のロード
     loadResultsAndEmployees();
   }, []);
 
@@ -96,9 +162,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     }
   }, [activeTab]);
 
-  // 設定の保存 (LocalStorage永続化 ＆ キャンペーンアクティベート)
+  // 設定の保存
   const handleSaveSettings = () => {
-    // 期間のバリデーション
     if (!campaignName.trim()) {
       onNotify('実施キャンペーン名を入力してください。', 'error');
       return;
@@ -116,7 +181,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       return;
     }
 
-    // 各LocalStorageキーに保存
     const campaign: CampaignSettings = {
       campaignName: campaignName.trim(),
       startDate,
@@ -144,7 +208,399 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     localStorage.setItem('stress_check_interview', JSON.stringify(interview));
 
     onNotify('設定がLocalStorageに保存され、キャンペーンが有効化されました！', 'success');
-    setAdminStep(1); // 最初のステップに戻す
+    setAdminStep(1); 
+  };
+
+  // ==========================================
+  // スマートCSVインポート機能
+  // ==========================================
+
+  // ドラッグオーバーハンドラ
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  // ファイルドロップハンドラ
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      processCSVFile(files[0]);
+    }
+  };
+
+  // ファイル選択ハンドラ
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      processCSVFile(files[0]);
+    }
+  };
+
+  // CSVファイルのパースとバリデーション
+  const processCSVFile = (file: File) => {
+    if (!file.name.endsWith('.csv')) {
+      onNotify('CSV形式のファイルのみアップロード可能です。', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      parseCSVContent(text);
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  // テキストパース
+  const parseCSVContent = (content: string) => {
+    const lines = content.split(/\r?\n/);
+    const parsed: ParsedCSVItem[] = [];
+    let idCounter = 1;
+
+    // ヘッダー行をスキップしてループ
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue; // 空行スキップ
+
+      // 簡易カンマ分割 (ダブルクォーテーションをトリム)
+      const cols = line.split(',').map(c => c.replace(/^["']|["']$/g, '').trim());
+
+      // 列不足の場合は埋める
+      const employeeCode = cols[0] || '';
+      const name = cols[1] || '';
+      const nameKana = cols[2] || '';
+      const rawGender = cols[3] || 'male';
+      const email = cols[4] || '';
+      const birthDate = cols[5] || '';
+      const department = cols[6] || '一般';
+
+      // 性別の自動マッピング
+      let gender: 'male' | 'female' = 'male';
+      if (rawGender === 'female' || rawGender === '女性' || rawGender === '女' || rawGender === 'f') {
+        gender = 'female';
+      }
+
+      const rowData: CSVRow = {
+        employeeCode,
+        name,
+        nameKana,
+        gender,
+        email,
+        birthDate,
+        department
+      };
+
+      // バリデーション実行
+      const errors = validateRow(rowData, parsed.map(p => p.data.employeeCode));
+
+      parsed.push({
+        id: idCounter++,
+        data: rowData,
+        errors
+      });
+    }
+
+    setParsedItems(parsed);
+    checkErrorsExist(parsed);
+    onNotify(`${parsed.length} 行のCSVデータを読み込みました。`, 'success');
+  };
+
+  // 単一行バリデーション
+  const validateRow = (row: CSVRow, previousCodes: string[]): Record<string, string> => {
+    const errs: Record<string, string> = {};
+
+    if (!row.employeeCode) {
+      errs.employeeCode = '社員番号は必須です';
+    } else if (previousCodes.includes(row.employeeCode)) {
+      errs.employeeCode = 'ファイル内で社員番号が重複しています';
+    }
+
+    if (!row.name) {
+      errs.name = '名前は必須です';
+    }
+
+    if (!row.email) {
+      errs.email = 'メールアドレスは必須です';
+    } else if (!row.email.includes('@')) {
+      errs.email = '@を含む有効な形式にしてください';
+    }
+
+    if (!row.birthDate) {
+      errs.birthDate = '生年月日は必須です';
+    } else if (isNaN(Date.parse(row.birthDate))) {
+      errs.birthDate = '日付形式(YYYY-MM-DD)にしてください';
+    }
+
+    return errs;
+  };
+
+  // エラーの有無を検査
+  const checkErrorsExist = (items: ParsedCSVItem[]) => {
+    const hasError = items.some(item => Object.keys(item.errors).length > 0);
+    setHasImportErrors(hasError);
+  };
+
+  // エディタセル直接編集ロジック
+  const handleCellEdit = (itemId: number, field: keyof CSVRow, value: string) => {
+    const updated = parsedItems.map(item => {
+      if (item.id === itemId) {
+        const newData = { ...item.data, [field]: value };
+        
+        // 再バリデーション用に、他の行の社員番号リストを取得
+        const otherCodes = parsedItems
+          .filter(p => p.id !== itemId)
+          .map(p => p.data.employeeCode);
+
+        const newErrors = validateRow(newData, otherCodes);
+        return {
+          ...item,
+          data: newData,
+          errors: newErrors
+        };
+      }
+      return item;
+    });
+
+    setParsedItems(updated);
+    checkErrorsExist(updated);
+  };
+
+  // インポート確定処理
+  const handleConfirmImport = () => {
+    if (hasImportErrors) {
+      onNotify('エラーが表示されているセルをすべて修正してください。', 'error');
+      return;
+    }
+
+    const storedEmployees = localStorage.getItem('stress_check_employees');
+    const existingEmployees: Employee[] = storedEmployees ? JSON.parse(storedEmployees) : [];
+    
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    const updatedList = [...existingEmployees];
+
+    parsedItems.forEach(item => {
+      const idx = updatedList.findIndex(e => e.employeeCode === item.data.employeeCode);
+      const newEmp: Employee = {
+        employeeCode: item.data.employeeCode,
+        name: item.data.name,
+        nameKana: item.data.nameKana,
+        gender: item.data.gender,
+        email: item.data.email,
+        birthDate: item.data.birthDate,
+        status: 'active',
+        department: item.data.department
+      };
+
+      if (idx !== -1) {
+        if (duplicateOption === 'overwrite') {
+          updatedList[idx] = newEmp;
+          updatedCount++;
+        }
+      } else {
+        updatedList.push(newEmp);
+        addedCount++;
+      }
+    });
+
+    localStorage.setItem('stress_check_employees', JSON.stringify(updatedList));
+    setParsedItems([]); // クリア
+    setEmployees(updatedList);
+    onNotify(`インポート成功：${addedCount}名を追加、${updatedCount}名を更新しました。`, 'success');
+  };
+
+  // ==========================================
+  // 健康経営調査用データCSV出力機能
+  // ==========================================
+  const handleExportMETICSV = () => {
+    // 統計計算
+    const totalActive = employees.filter(e => e.status === 'active').length;
+    const completed = results.length;
+    const rate = totalActive > 0 ? ((completed / totalActive) * 100).toFixed(1) : '0';
+
+    // 性別受検率
+    const activeMale = employees.filter(e => e.status === 'active' && e.gender === 'male').length;
+    const completedMale = results.filter(r => {
+      const emp = employees.find(e => e.employeeCode === r.employeeCode);
+      return emp?.gender === 'male';
+    }).length;
+    const maleRate = activeMale > 0 ? ((completedMale / activeMale) * 100).toFixed(1) : '0';
+
+    const activeFemale = employees.filter(e => e.status === 'active' && e.gender === 'female').length;
+    const completedFemale = results.filter(r => {
+      const emp = employees.find(e => e.employeeCode === r.employeeCode);
+      return emp?.gender === 'female';
+    }).length;
+    const femaleRate = activeFemale > 0 ? ((completedFemale / activeFemale) * 100).toFixed(1) : '0';
+
+    // 年代計算用
+    const ageBrackets: Record<string, number> = { '20代以下': 0, '30代': 0, '40代': 0, '50代': 0, '60代以上': 0 };
+    results.forEach(res => {
+      const emp = employees.find(e => e.employeeCode === res.employeeCode);
+      if (emp && emp.birthDate) {
+        const age = new Date().getFullYear() - new Date(emp.birthDate).getFullYear();
+        if (age < 30) ageBrackets['20代以下']++;
+        else if (age < 40) ageBrackets['30代']++;
+        else if (age < 50) ageBrackets['40代']++;
+        else if (age < 60) ageBrackets['50代']++;
+        else ageBrackets['60代以上']++;
+      }
+    });
+
+    const highStressRate = completed > 0 ? ((highStressCount / completed) * 100).toFixed(1) : '0';
+
+    // CSV文字列構築
+    let csvContent = '\uFEFF'; // Excel文字化け防止のBOM
+    csvContent += '健康経営度調査提出用 統計データ出力レポート\n';
+    csvContent += `キャンペーン名,${campaignName}\n`;
+    csvContent += `抽出日付,${new Date().toLocaleDateString()}\n\n`;
+    
+    csvContent += '■ 基礎統計項目\n';
+    csvContent += `常時使用する従業員数（アクティブ） (人),${totalActive}\n`;
+    csvContent += `ストレスチェック受検者数 (人),${completed}\n`;
+    csvContent += `全体受検率 (%),${rate}\n`;
+    csvContent += `男性受検率 (%),${maleRate}\n`;
+    csvContent += `女性受検率 (%),${femaleRate}\n`;
+    csvContent += `高ストレス該当割合 (%),${highStressRate}\n\n`;
+
+    csvContent += '■ 年代別受検分布 (完了数)\n';
+    for (const [bracket, count] of Object.entries(ageBrackets)) {
+      csvContent += `${bracket},${count} 人\n`;
+    }
+    
+    // CSVダウンロードトリガー
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `meti_health_survey_${campaignName}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onNotify('健康経営度調査統計CSVファイルをダウンロードしました。', 'success');
+  };
+
+  // ==========================================
+  // 未受検者催促シミュレーター
+  // ==========================================
+  const getNonParticipants = () => {
+    return employees.filter(emp => {
+      if (emp.status !== 'active') return false;
+      const completed = results.some(res => res.employeeCode === emp.employeeCode);
+      return !completed;
+    });
+  };
+
+  const handleOpenReminder = () => {
+    const targets = getNonParticipants();
+    setReminderTargetCount(targets.length);
+    if (targets.length === 0) {
+      onNotify('未受検の従業員は存在しません。全員の受検が完了しています。', 'success');
+      return;
+    }
+    setIsReminderOpen(true);
+  };
+
+  const handleStartReminderSimulation = () => {
+    const targets = getNonParticipants();
+    if (targets.length === 0) return;
+
+    setIsReminding(true);
+    setReminderProgress(0);
+
+    let idx = 0;
+    const sendNext = () => {
+      if (idx < targets.length) {
+        setReminderCurrentName(targets[idx].name);
+        setReminderProgress(Math.round(((idx + 1) / targets.length) * 100));
+        idx++;
+        setTimeout(sendNext, 1200); // 1.2秒おきに送信をアニメーション
+      } else {
+        // 送信終了
+        setTimeout(() => {
+          setIsReminding(false);
+          setIsReminderOpen(false);
+          onNotify(`${targets.length} 名の未受検者へ催促メールを配信しました（シミュレーション完了）。`, 'success');
+        }, 800);
+      }
+    };
+
+    sendNext();
+  };
+
+  // ==========================================
+  // 組織分析ダッシュボード
+  // ==========================================
+
+  // 部署リスト
+  const departments = Array.from(new Set(employees.filter(e => e.status === 'active').map(e => e.department || '一般')));
+
+  // 部署別統計算出
+  const getDeptStats = (deptName: string) => {
+    const deptEmployees = employees.filter(e => e.status === 'active' && e.department === deptName);
+    const deptResults = results.filter(r => {
+      const emp = employees.find(e => e.employeeCode === r.employeeCode);
+      return emp && emp.department === deptName;
+    });
+
+    const completed = deptResults.length;
+    const active = deptEmployees.length;
+    const rate = active > 0 ? Math.round((completed / active) * 100) : 0;
+    const highStress = deptResults.filter(r => r.isHighStress).length;
+    
+    // 平均スコア算出
+    let avgStressor = 0;
+    let avgReaction = 0;
+    let avgSupport = 0;
+    
+    if (completed > 0) {
+      // 10名以上の開示合意された結果平均
+      const disclosedResults = deptResults.filter(r => r.consentDisclose);
+      if (disclosedResults.length > 0) {
+        // ストレス要因平均 (jobQuantity, jobQuality, jobControl, interpersonal, satisfaction, environment)
+        const totalStressor = disclosedResults.reduce((sum, res) => {
+          return sum + (
+            res.subscales.jobQuantity +
+            res.subscales.jobQuality +
+            res.subscales.jobControl +
+            res.subscales.interpersonal +
+            res.subscales.satisfaction
+          ) / 5;
+        }, 0);
+        avgStressor = parseFloat((totalStressor / disclosedResults.length).toFixed(1));
+
+        // ストレス反応平均 (vigor, irritation, fatigue, anxiety, depression, somatic)
+        const totalReaction = disclosedResults.reduce((sum, res) => {
+          return sum + (
+            res.subscales.vigor +
+            res.subscales.irritation +
+            res.subscales.fatigue +
+            res.subscales.anxiety +
+            res.subscales.depression +
+            res.subscales.somatic
+          ) / 6;
+        }, 0);
+        avgReaction = parseFloat((totalReaction / disclosedResults.length).toFixed(1));
+
+        // サポート平均
+        const totalSupport = disclosedResults.reduce((sum, res) => {
+          return sum + (res.subscales.supervisorSupport + res.subscales.colleagueSupport) / 2;
+        }, 0);
+        avgSupport = parseFloat((totalSupport / disclosedResults.length).toFixed(1));
+      }
+    }
+
+    return {
+      completed,
+      active,
+      rate,
+      highStress,
+      avgStressor, // 高いほど良い (5段階)
+      avgReaction,  // 高いほど良い (5段階)
+      avgSupport   // 高いほど良い (5段階)
+    };
   };
 
   // 受検詳細モーダルを開く
@@ -154,16 +610,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     setSelectedEmployee(emp);
   };
 
-  // ==========================================
-  // 受検状況の集計計算
-  // ==========================================
   const totalEmployees = employees.filter(e => e.status === 'active').length;
   const completedCount = results.length;
   const completionRate = totalEmployees > 0 ? Math.round((completedCount / totalEmployees) * 100) : 0;
   const highStressCount = results.filter(r => r.isHighStress).length;
   const interviewRequestCount = results.filter(r => r.requestInterview).length;
 
-  // フィルタリング後の受検結果
   const filteredResults = results.filter(res => {
     const emp = employees.find(e => e.employeeCode === res.employeeCode);
     const name = emp ? emp.name : 'ゲスト';
@@ -218,13 +670,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             <span className="badge-admin">セットアップ</span>
           </div>
 
-          {/* ウィザードインジケータ */}
           <div className="wizard-steps mb-6">
             <div className={`wizard-step ${adminStep === 1 ? 'active' : ''}`}>
               <span className="wizard-step-num">1</span> 期間設定
             </div>
             <div className={`wizard-step ${adminStep === 2 ? 'active' : ''}`}>
-              <span className="wizard-step-num">2</span> 対象者確認
+              <span className="wizard-step-num">2</span> 対象者登録
             </div>
             <div className={`wizard-step ${adminStep === 3 ? 'active' : ''}`}>
               <span className="wizard-step-num">3</span> 開示同意
@@ -237,9 +688,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
           </div>
 
-          {/* 各ステップのコンテンツ */}
           <div className="admin-step-content" style={{ minHeight: '320px' }}>
-            {/* ステップ1: 期間設定 */}
             {adminStep === 1 && (
               <div className="admin-card fade-in">
                 <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ1: キャンペーン及び実施期間設定</h3>
@@ -283,7 +732,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                     rows={3} 
                     value={customNoticeStart}
                     onChange={(e) => setCustomNoticeStart(e.target.value)}
-                    placeholder="受検者が最初に目にする説明文です。"
                   />
                   <div className="text-right text-muted" style={{ fontSize: '0.75rem' }}>{customNoticeStart.length}/400 文字</div>
                 </div>
@@ -295,44 +743,164 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                     rows={3} 
                     value={customNoticeHighStress}
                     onChange={(e) => setCustomNoticeHighStress(e.target.value)}
-                    placeholder="高ストレス者にのみ結果画面で表示される相談窓口やアドバイス文です。"
                   />
                   <div className="text-right text-muted" style={{ fontSize: '0.75rem' }}>{customNoticeHighStress.length}/400 文字</div>
                 </div>
-
-                <p className="text-muted mt-2" style={{ fontSize: '0.78rem', color: '#b45309' }}>
-                  ※設定した期間外は、受検者画面が自動でロックアウトされ受検できなくなります。
-                </p>
               </div>
             )}
 
-            {/* ステップ2: 対象者確認 */}
+            {/* ステップ2: 対象者インポート (完全スマートインポート) */}
             {adminStep === 2 && (
               <div className="admin-card fade-in">
-                <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ2: 受検対象者マスタ確認</h3>
+                <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ2: 対象従業員マスタ登録（CSVスマートインポート）</h3>
                 
-                <div className="feature-info mb-4" style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                  <p style={{ fontSize: '0.9rem', fontWeight: 600 }}>👥 現在の有効受検対象者数: <span className="text-primary" style={{ fontSize: '1.1rem' }}>{totalEmployees} 名</span></p>
-                  <p className="text-muted mt-1" style={{ fontSize: '0.8rem' }}>受検対象者は「従業員マスタ管理」タブで登録された、ステータスが「有効」の全社員です。</p>
+                <div className="flex gap-4 justify-between mb-4 flex-wrap" style={{ fontSize: '0.88rem' }}>
+                  <div>👥 有効な登録従業員数: <strong>{totalEmployees} 名</strong></div>
+                  <div>
+                    重複時の処理: 
+                    <select 
+                      value={duplicateOption} 
+                      onChange={(e) => setDuplicateOption(e.target.value as any)}
+                      style={{ marginLeft: '6px', padding: '2px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                    >
+                      <option value="overwrite">既存データに上書きする</option>
+                      <option value="skip">重複データはスキップする</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* CSVアップロードプレースホルダー (Phase 3用ワイヤー) */}
-                <div className="csv-upload-mock text-center" style={{ border: '2px dashed #cbd5e1', padding: '2.5rem 1rem', borderRadius: '8px', background: '#f8fafc' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '4px' }}>対象者CSVの一括スマートインポート (Phase 3実装予定)</div>
-                  <p className="text-muted mb-4" style={{ fontSize: '0.8rem' }}>CSV/Excelのドラッグ＆ドロップとエラー行の画面上エディタ修正</p>
-                  <button className="btn btn-outline" disabled style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}>CSVインポート機能を使用する</button>
+                {/* CSVアップロードエリア */}
+                <div 
+                  className="csv-dropzone text-center mb-6" 
+                  onDragOver={handleDragOver}
+                  onDrop={handleFileDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={32} className="text-primary mb-2" style={{ display: 'inline-block' }} />
+                  <p style={{ fontWeight: 700 }}>受検対象者CSVファイルをドラッグ＆ドロップ</p>
+                  <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>または、ここをクリックしてファイルを選択</p>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileSelect} 
+                    style={{ display: 'none' }} 
+                    accept=".csv" 
+                  />
                 </div>
 
-                <div className="feature-info mt-4" style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '1rem' }}>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
-                    💡 <strong>受検対象の追加・編集について:</strong><br />
-                    対象者の個別の追加や変更は、上の<strong>「従業員マスタ管理」</strong>タブからいつでも簡単に行えます。
-                  </p>
+                <div className="feature-info mb-4" style={{ fontSize: '0.75rem', padding: '10px' }}>
+                  📝 <strong>CSV推奨形式:</strong> 社員番号, 氏名, カナ, 性別(男性/女性), メールアドレス, 生年月日(YYYY-MM-DD), 部署
                 </div>
+
+                {/* スマートグリッドエディタ (エラー検出時) */}
+                {parsedItems.length > 0 && (
+                  <div className="smart-grid-editor-wrapper fade-in" style={{ border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div className="editor-header flex justify-between items-center py-2 px-4" style={{ background: hasImportErrors ? '#fef2f2' : '#f0fdf4', borderBottom: '1px solid #cbd5e1' }}>
+                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: hasImportErrors ? '#991b1b' : '#15803d' }}>
+                        {hasImportErrors 
+                          ? `⚠️ ${parsedItems.filter(p => Object.keys(p.errors).length > 0).length}行にエラーがあります。赤く表示されたセルをダブルクリックして修正してください。`
+                          : '✨ すべてのデータの検証が完了しました！エラーはありません。'}
+                      </span>
+                      {hasImportErrors && <span style={{ fontSize: '0.75rem', color: '#991b1b' }}>※Enterで確定、Escでキャンセル</span>}
+                    </div>
+
+                    <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                      <table className="editor-table" style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
+                            <th style={{ padding: '6px 12px' }}>社員番号</th>
+                            <th style={{ padding: '6px 12px' }}>氏名</th>
+                            <th style={{ padding: '6px 12px' }}>メールアドレス</th>
+                            <th style={{ padding: '6px 12px' }}>生年月日</th>
+                            <th style={{ padding: '6px 12px' }}>部署</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parsedItems.map(item => (
+                            <tr key={item.id} style={{ borderBottom: '1px solid #cbd5e1' }}>
+                              {/* 社員番号 */}
+                              <td 
+                                className={`editable-cell ${item.errors.employeeCode ? 'cell-error' : ''}`}
+                                style={{ padding: '4px 10px' }}
+                                title={item.errors.employeeCode}
+                              >
+                                <input
+                                  type="text"
+                                  value={item.data.employeeCode}
+                                  onChange={(e) => handleCellEdit(item.id, 'employeeCode', e.target.value)}
+                                  className="grid-input"
+                                />
+                              </td>
+                              {/* 氏名 */}
+                              <td 
+                                className={`editable-cell ${item.errors.name ? 'cell-error' : ''}`}
+                                style={{ padding: '4px 10px' }}
+                                title={item.errors.name}
+                              >
+                                <input
+                                  type="text"
+                                  value={item.data.name}
+                                  onChange={(e) => handleCellEdit(item.id, 'name', e.target.value)}
+                                  className="grid-input"
+                                />
+                              </td>
+                              {/* メールアドレス */}
+                              <td 
+                                className={`editable-cell ${item.errors.email ? 'cell-error' : ''}`}
+                                style={{ padding: '4px 10px' }}
+                                title={item.errors.email}
+                              >
+                                <input
+                                  type="email"
+                                  value={item.data.email}
+                                  onChange={(e) => handleCellEdit(item.id, 'email', e.target.value)}
+                                  className="grid-input"
+                                />
+                              </td>
+                              {/* 生年月日 */}
+                              <td 
+                                className={`editable-cell ${item.errors.birthDate ? 'cell-error' : ''}`}
+                                style={{ padding: '4px 10px' }}
+                                title={item.errors.birthDate}
+                              >
+                                <input
+                                  type="text"
+                                  value={item.data.birthDate}
+                                  onChange={(e) => handleCellEdit(item.id, 'birthDate', e.target.value)}
+                                  className="grid-input"
+                                />
+                              </td>
+                              {/* 部署 */}
+                              <td style={{ padding: '4px 10px' }}>
+                                <input
+                                  type="text"
+                                  value={item.data.department}
+                                  onChange={(e) => handleCellEdit(item.id, 'department', e.target.value)}
+                                  className="grid-input"
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="py-2 px-4 text-right" style={{ background: '#f8fafc', borderTop: '1px solid #cbd5e1' }}>
+                      <button 
+                        className="btn btn-primary" 
+                        disabled={hasImportErrors}
+                        onClick={handleConfirmImport}
+                        style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
+                      >
+                        {parsedItems.length} 名のデータをインポート確定
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ステップ3: 開示同意設定 */}
+            {/* ステップ3: 同意設定 */}
             {adminStep === 3 && (
               <div className="admin-card fade-in">
                 <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ3: 事業者への結果開示・同意フォーム構成</h3>
@@ -347,9 +915,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                     />
                     結果開示同意フォームを収集する
                   </label>
-                  <p className="text-muted" style={{ fontSize: '0.78rem', marginLeft: '26px' }}>
-                    ※無効にすると、結果開示の確認を行わず、受検結果の企業側閲覧を制限（または一括制限）します。安全な法運用のために<strong>「使用する」を推奨</strong>します。
-                  </p>
                 </div>
 
                 {useConsent && (
@@ -361,10 +926,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                         className="form-control" 
                         value={discloseLabel}
                         onChange={(e) => setDiscloseLabel(e.target.value)}
-                        placeholder="例: 〇〇株式会社, 会社"
                         maxLength={10}
                       />
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>※規約文章内の「事業者」がこの名称に差し替わります。</p>
                     </div>
 
                     <div className="form-group">
@@ -402,16 +965,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                           受検完了直後 (推奨)
                         </label>
                       </div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                        ※「受検完了直後」を選択すると、受検者は自分の結果が出る直前に、不同意による不利益が生じない規約に合意するか選択します。
-                      </p>
                     </div>
                   </div>
                 )}
               </div>
             )}
 
-            {/* ステップ4: 医師面接設定 */}
+            {/* ステップ4: 医師面接 */}
             {adminStep === 4 && (
               <div className="admin-card fade-in">
                 <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ4: 医師面接指導の受付フォーム設定</h3>
@@ -425,7 +985,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                   >
                     <option value="high_stress_only">高ストレス判定者にのみ表示 (推奨)</option>
                     <option value="all">全員に表示</option>
-                    <option value="recommended_only">面接勧奨者（管理者が個別判定）にのみ表示</option>
+                    <option value="recommended_only">面接勧奨者にのみ表示</option>
                     <option value="disabled">使用しない</option>
                   </select>
                 </div>
@@ -443,9 +1003,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                         <option value="optional">開示同意は「任意」とする</option>
                         <option value="none">開示同意は不要（別管理）とする</option>
                       </select>
-                      <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                        ※医師面接を申し込むと、自動的に「事業者への結果開示同意」もセットで必要とする運用が法的に推奨されます。
-                      </p>
                     </div>
 
                     <div className="form-group">
@@ -469,7 +1026,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                         className="form-control" 
                         value={notificationEmails}
                         onChange={(e) => setNotificationEmails(e.target.value)}
-                        placeholder="例: hoken@company.com, admin@company.com"
+                        placeholder="例: admin@company.com"
                       />
                     </div>
                   </div>
@@ -523,7 +1080,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                     <CheckCircle2 size={18} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
                     設定を保存してキャンペーンを有効化
                   </button>
-                  <p className="text-muted mt-2" style={{ fontSize: '0.75rem' }}>※有効化すると設定がLocalStorageに保存され、受検者用ログイン画面へただちに反映されます。</p>
                 </div>
               </div>
             )}
@@ -560,9 +1116,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           ========================================== */}
       {activeTab === 'results' && (
         <div className="card fade-in" style={{ maxWidth: '800px' }}>
-          <div className="admin-header mb-6">
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>受検結果トラッキング ＆ 分析</h2>
-            <p className="text-muted" style={{ fontSize: '0.85rem' }}>受検対象従業員の進捗状況および集計結果をリアルタイムで追跡します。</p>
+          <div className="admin-header mb-6 flex justify-between items-center flex-wrap gap-4">
+            <div>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>受検結果トラッキング ＆ 分析</h2>
+              <p className="text-muted" style={{ fontSize: '0.85rem' }}>受検対象従業員の進捗状況および集計結果をリアルタイムで追跡します。</p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button 
+                onClick={handleExportMETICSV} 
+                className="btn btn-outline" 
+                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                title="健康経営度調査用CSVのダウンロード"
+              >
+                <Download size={14} style={{ marginRight: '6px' }} />
+                健康経営CSV出力
+              </button>
+              <button 
+                onClick={handleOpenReminder} 
+                className="btn btn-outline" 
+                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+              >
+                <Mail size={14} style={{ marginRight: '6px' }} />
+                未受検者へ催促
+              </button>
+            </div>
           </div>
 
           {/* クイック統計パネル */}
@@ -591,85 +1169,263 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
           </div>
 
-          {/* 受検者検索 */}
-          <div className="search-box mb-4" style={{ position: 'relative' }}>
-            <Search size={18} className="text-muted" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              className="form-control"
-              placeholder="社員番号、氏名で結果を検索..."
-              value={resultSearchTerm}
-              onChange={(e) => setResultSearchTerm(e.target.value)}
-              style={{ paddingLeft: '40px' }}
-            />
+          {/* サブタブ切り替え: 結果一覧 vs 組織ダッシュボード */}
+          <div className="results-subtabs mb-4 flex gap-2" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+            <button 
+              className={`btn btn-outline ${resultsSubTab === 'list' ? 'btn-primary text-white' : ''}`}
+              onClick={() => setResultsSubTab('list')}
+              style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '4px' }}
+            >
+              受検結果一覧
+            </button>
+            <button 
+              className={`btn btn-outline ${resultsSubTab === 'dashboard' ? 'btn-primary text-white' : ''}`}
+              onClick={() => { setResultsSubTab('dashboard'); loadResultsAndEmployees(); }}
+              style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '4px' }}
+            >
+              組織分析ダッシュボード
+            </button>
           </div>
 
-          {/* 結果一覧テーブル */}
-          <div className="table-responsive" style={{ background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <table className="admin-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>社員番号</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>氏名</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>受検日</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>事業者開示同意</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>高ストレス判定</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600 }}>医師面接希望</th>
-                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'center' }}>詳細</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredResults.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-                      受検結果レコードがありません。
-                    </td>
-                  </tr>
-                ) : (
-                  filteredResults.map((res) => {
-                    const emp = employees.find(e => e.employeeCode === res.employeeCode);
-                    const name = emp ? emp.name : 'ゲスト受検者';
-                    
-                    return (
-                      <tr key={res.id} style={{ borderBottom: '1px solid #f1f5f9' }} className="table-row">
-                        <td style={{ padding: '12px 16px', fontWeight: 600, fontFamily: 'monospace' }}>{res.employeeCode}</td>
-                        <td style={{ padding: '12px 16px', fontWeight: 500 }}>{name}</td>
-                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
-                          {res.completedAt.split('T')[0]}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span className={`consent-badge ${res.consentDisclose ? 'agreed' : 'disagreed'}`}>
-                            {res.consentDisclose ? '同意あり' : '同意なし（非開示）'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          {!res.consentDisclose ? (
-                            <span className="masked-indicator">
-                              <Lock size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 非公開
-                            </span>
-                          ) : (
-                            <span className={`highstress-badge ${res.isHighStress ? 'yes' : 'no'}`}>
-                              {res.isHighStress ? '高ストレス' : '健康状態良好'}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span className={`interview-badge ${res.requestInterview ? 'yes' : 'no'}`}>
-                            {res.requestInterview ? '希望する' : '希望しない'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                          <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleViewResultDetails(res)}>
-                            閲覧
-                          </button>
+          {/* 2.1 受検結果一覧サブタブ */}
+          {resultsSubTab === 'list' && (
+            <div className="fade-in">
+              {/* 受検者検索 */}
+              <div className="search-box mb-4" style={{ position: 'relative' }}>
+                <Search size={18} className="text-muted" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="社員番号、氏名で結果を検索..."
+                  value={resultSearchTerm}
+                  onChange={(e) => setResultSearchTerm(e.target.value)}
+                  style={{ paddingLeft: '40px' }}
+                />
+              </div>
+
+              {/* 結果一覧テーブル */}
+              <div className="table-responsive" style={{ background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <table className="admin-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>社員番号</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>氏名 / 部署</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>受検日</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>事業者開示同意</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>高ストレス判定</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600 }}>医師面接希望</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'center' }}>詳細</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredResults.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                          受検結果レコードがありません。
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ) : (
+                      filteredResults.map((res) => {
+                        const emp = employees.find(e => e.employeeCode === res.employeeCode);
+                        const name = emp ? emp.name : 'ゲスト受検者';
+                        const dept = emp ? emp.department : '未割り当て';
+                        
+                        return (
+                          <tr key={res.id} style={{ borderBottom: '1px solid #f1f5f9' }} className="table-row">
+                            <td style={{ padding: '12px 16px', fontWeight: 600, fontFamily: 'monospace' }}>{res.employeeCode}</td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <div style={{ fontWeight: 500 }}>{name}</div>
+                              <div className="text-muted" style={{ fontSize: '0.75rem' }}>{dept}</div>
+                            </td>
+                            <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>
+                              {res.completedAt.split('T')[0]}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span className={`consent-badge ${res.consentDisclose ? 'agreed' : 'disagreed'}`}>
+                                {res.consentDisclose ? '同意あり' : '同意なし（非開示）'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              {!res.consentDisclose ? (
+                                <span className="masked-indicator">
+                                  <Lock size={12} style={{ marginRight: '4px', verticalAlign: 'middle' }} /> 非公開
+                                </span>
+                              ) : (
+                                <span className={`highstress-badge ${res.isHighStress ? 'yes' : 'no'}`}>
+                                  {res.isHighStress ? '高ストレス' : '通常範囲内'}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '12px 16px' }}>
+                              <span className={`interview-badge ${res.requestInterview ? 'yes' : 'no'}`}>
+                                {res.requestInterview ? '希望する' : '希望しない'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                              <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleViewResultDetails(res)}>
+                                閲覧
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 2.2 組織分析ダッシュボードサブタブ (法的基準10名未満ロック) */}
+          {resultsSubTab === 'dashboard' && (
+            <div className="fade-in">
+              <h3 className="mb-4" style={{ fontSize: '1.05rem', fontWeight: 800 }}>部署別 ストレス分析一覧</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                {departments.map(dept => {
+                  const stats = getDeptStats(dept);
+                  return (
+                    <div 
+                      key={dept} 
+                      className={`stat-card text-left ${selectedDept === dept ? 'selected-dept-card' : ''}`}
+                      onClick={() => setSelectedDept(dept)}
+                      style={{ cursor: 'pointer', padding: '1rem', border: selectedDept === dept ? '2px solid var(--primary)' : '1px solid #e2e8f0', background: 'white', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}
+                    >
+                      <h4 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px' }}>{dept}</h4>
+                      <div className="text-muted" style={{ fontSize: '0.8rem' }}>対象社員数: {stats.active} 名</div>
+                      <div className="text-muted" style={{ fontSize: '0.8rem' }}>受検完了数: <strong>{stats.completed} 名</strong></div>
+                      <div className="text-muted" style={{ fontSize: '0.8rem' }}>完了率: {stats.rate}%</div>
+                      
+                      <div className="mt-3 w-full flex justify-between items-center" style={{ width: '100%' }}>
+                        {stats.completed < 10 ? (
+                          <span className="masked-indicator" style={{ fontSize: '0.7rem' }}>
+                            <Lock size={10} style={{ marginRight: '4px' }} /> 匿名保護ロック中
+                          </span>
+                        ) : (
+                          <span className="consent-badge agreed" style={{ fontSize: '0.7rem' }}>
+                            <BarChart2 size={10} style={{ marginRight: '4px', verticalAlign: 'middle', display: 'inline-block' }} /> 分析開示可能
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 組織分析グラフ＆分析レポート表示 */}
+              {selectedDept ? (
+                <div className="dept-analysis-details fade-in" style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.5rem', background: '#f8fafc', position: 'relative' }}>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>「{selectedDept}」分析レポート</h3>
+                    <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                      完了数: {getDeptStats(selectedDept).completed} 名 / 10名基準
+                    </span>
+                  </div>
+
+                  {getDeptStats(selectedDept).completed < 10 ? (
+                    // =================== 10人未満ロック画面 (グラス施錠オーバーレイ) ===================
+                    <div className="locked-dashboard-overlay text-center" style={{ padding: '3rem 1.5rem', background: 'rgba(255,255,255,0.75)', backdropFilter: 'blur(4px)', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                      <div className="lock-icon-wrapper mb-4" style={{ background: '#fffbeb', borderColor: '#fef3c7' }}>
+                        <Lock size={36} className="text-muted" style={{ color: '#d97706' }} />
+                      </div>
+                      <h4 style={{ fontWeight: 800, fontSize: '1.1rem', color: '#92400e', marginBottom: '8px' }}>
+                        個人情報匿名化保護ロックがかかっています
+                      </h4>
+                      <p className="text-muted mb-4" style={{ fontSize: '0.82rem', maxWidth: '480px', margin: '0 auto', lineHeight: '1.6' }}>
+                        厚生労働省のストレスチェック制度マニュアルの法的要件に基づき、<strong>受検完了者が10人未満のグループ</strong>については、個人が特定されるプライバシー侵害を避けるため、集計結果（グラフや平均スコア）の閲覧が法律上厳格に制限されています。
+                      </p>
+                      
+                      <div className="progress-bar" style={{ maxWidth: '300px', margin: '0 auto 1rem', height: '6px' }}>
+                        <div 
+                          className="progress-fill" 
+                          style={{ 
+                            width: `${(getDeptStats(selectedDept).completed / 10) * 100}%`,
+                            background: 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)' 
+                          }}
+                        ></div>
+                      </div>
+                      
+                      <p style={{ fontWeight: 700, fontSize: '0.85rem', color: '#b45309' }}>
+                        現在完了: {getDeptStats(selectedDept).completed}名 / 必要件数: 10名（あと {10 - getDeptStats(selectedDept).completed}名の受検が必要です）
+                      </p>
+                    </div>
+                  ) : (
+                    // =================== 10人以上 分析開示可能 ===================
+                    <div className="fade-in">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                        {/* 集計棒グラフ */}
+                        <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '8px', textAlign: 'center' }}>部署ストレス指標比較 (高いほど良好)</h4>
+                          <Bar 
+                            data={{
+                              labels: ['仕事ストレス要因', '心身の反応', '周囲のサポート'],
+                              datasets: [
+                                {
+                                  label: `${selectedDept}平均`,
+                                  data: [
+                                    getDeptStats(selectedDept).avgStressor,
+                                    getDeptStats(selectedDept).avgReaction,
+                                    getDeptStats(selectedDept).avgSupport
+                                  ],
+                                  backgroundColor: [
+                                    'rgba(59, 130, 246, 0.65)',
+                                    'rgba(16, 185, 129, 0.65)',
+                                    'rgba(139, 92, 246, 0.65)'
+                                  ],
+                                  borderColor: [
+                                    'rgb(30, 64, 175)',
+                                    'rgb(4, 120, 87)',
+                                    'rgb(91, 33, 182)'
+                                  ],
+                                  borderWidth: 1.5
+                                }
+                              ]
+                            }}
+                            options={{
+                              scales: {
+                                y: {
+                                  min: 0,
+                                  max: 5,
+                                  ticks: { stepSize: 1 }
+                                }
+                              },
+                              plugins: {
+                                legend: { display: false }
+                              }
+                            }}
+                          />
+                        </div>
+
+                        {/* 分析コメントレポート */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '6px' }}>🔎 部署ごとのストレス特徴</h4>
+                            <p style={{ fontSize: '0.8rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
+                              {getDeptStats(selectedDept).avgReaction < 3.2 
+                                ? '心身のストレス反応平均値が平均基準を下回っています。疲労感やイライラ感を感じている従業員が比較的多い兆候があります。適度な残業抑制や、業務調整のヒアリングを実施することを推奨します。'
+                                : '心身のストレス反応、仕事の要因、サポート環境がともに安定的な高水準に保たれています。活気が高く、良好な健康状態が持続されています。'}
+                            </p>
+                          </div>
+
+                          <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                            <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#c2410c', marginBottom: '6px' }}>⚠️ メンタルヘルスリスク</h4>
+                            <p style={{ fontSize: '0.8rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
+                              本部署内における高ストレス者の比率は <strong>{Math.round((getDeptStats(selectedDept).highStress / getDeptStats(selectedDept).completed) * 100)}%</strong> です。<br />
+                              相談しやすい職場風土作りの継続や、個別の管理者研修を通じて、ラインによるセルフケア支援を一層強化してください。
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted" style={{ border: '2px dashed #e2e8f0', borderRadius: '8px' }}>
+                  分析結果を表示する部署を選択してください。
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -679,6 +1435,68 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       {activeTab === 'employees' && (
         <div className="card" style={{ maxWidth: '800px' }}>
           <EmployeeManager onNotify={onNotify} />
+        </div>
+      )}
+
+      {/* ==========================================
+          受検催促メール送信シミュレーター (モーダル)
+          ========================================== */}
+      {isReminderOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content card" style={{ maxWidth: '500px', padding: '2rem', background: 'white' }}>
+            <div className="flex justify-between items-center pb-2 mb-4" style={{ borderBottom: '1px solid #e2e8f0' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary)' }}>
+                未受検者への催促メール一斉配信
+              </h3>
+              <button className="icon-btn" onClick={() => setIsReminderOpen(false)} disabled={isReminding}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {isReminding ? (
+              // 送信アニメーション中
+              <div className="text-center py-6 fade-in">
+                <RefreshCw size={36} className="text-primary mb-3" style={{ animation: 'spin 1.5s linear infinite', display: 'inline-block' }} />
+                <h4 style={{ fontWeight: 700 }}>催促メールを送信しています...</h4>
+                <p className="text-primary mt-2" style={{ fontWeight: 600, fontSize: '0.95rem' }}>{reminderCurrentName} さんに送信中</p>
+                
+                <div className="progress-bar mt-6" style={{ height: '8px' }}>
+                  <div className="progress-fill" style={{ width: `${reminderProgress}%` }}></div>
+                </div>
+                <span className="text-muted" style={{ fontSize: '0.8rem' }}>送信進捗: {reminderProgress}%</span>
+              </div>
+            ) : (
+              // プレビューと開始
+              <div className="fade-in">
+                <div className="alert-badge warning mb-4" style={{ borderRadius: '6px', fontSize: '0.82rem' }}>
+                  <AlertCircle size={16} style={{ marginRight: '6px' }} />
+                  <span>現在、未受検の対象従業員が <strong>{reminderTargetCount}名</strong> 検出されました。</span>
+                </div>
+
+                {/* メールプレビュー */}
+                <div className="email-preview-box mb-4" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', fontSize: '0.8rem', lineHeight: '1.5' }}>
+                  <div><strong>差出人:</strong> メンタルヘルス事務局 &lt;hoken@company.com&gt;</div>
+                  <div><strong>件名:</strong> 【催促】定期ストレスチェック受検のお願い</div>
+                  <div style={{ borderTop: '1px solid #e2e8f0', marginTop: '8px', paddingTop: '8px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    山田 太郎 様 (サンプル)<br /><br />
+                    お疲れ様です。メンタルヘルス推進事務局です。<br />
+                    現在、定期ストレスチェック期間中です。締切が近づいておりますので、未受検の方は下記URLより社員番号 [EMP001] を入力の上、受検にご協力をお願い致します。<br /><br />
+                    【受検URL】 https://stresscheck.company.com/<br />
+                    【受検締切】 {campaignName} 終了時まで
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button className="btn btn-outline w-full" onClick={() => setIsReminderOpen(false)}>
+                    キャンセル
+                  </button>
+                  <button className="btn btn-primary w-full" onClick={handleStartReminderSimulation}>
+                    送信を開始する (一斉配信)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -698,23 +1516,20 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
 
             <div className="modal-body" style={{ maxHeight: '500px', overflowY: 'auto', paddingRight: '8px' }}>
-              {/* 受検者基本情報 */}
               <div className="result-summary mb-4" style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px' }}>
                 <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px', color: 'var(--primary)' }}>👤 受検者基本プロファイル</h4>
                 <div className="grid grid-cols-2 gap-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: '0.85rem' }}>
                   <div><strong>社員番号:</strong> {selectedResult.employeeCode}</div>
                   <div><strong>氏名:</strong> {selectedEmployee ? selectedEmployee.name : 'ゲスト受検者'}</div>
-                  <div><strong>性別:</strong> {selectedEmployee ? (selectedEmployee.gender === 'male' ? '男性' : '女性') : '不明'}</div>
+                  <div><strong>部署:</strong> {selectedEmployee ? selectedEmployee.department : '未割り当て'}</div>
                   <div><strong>受検完了日時:</strong> {selectedResult.completedAt.replace('T', ' ').substring(0, 16)}</div>
                 </div>
               </div>
 
-              {/* 同意状態とスコア表示 (開示不同意の場合は詳細をマスキング) */}
               <div className="mb-4">
                 <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px' }}>📊 診断結果スコア</h4>
                 
                 {!selectedResult.consentDisclose ? (
-                  // =================== マスキング状態 (非開示) ===================
                   <div className="alert-badge warning flex-col" style={{ padding: '1.5rem', borderRadius: '8px', width: '100%', alignItems: 'center', textAlign: 'center' }}>
                     <ShieldAlert size={36} className="mb-2" style={{ color: '#ea580c' }} />
                     <strong style={{ fontSize: '1rem', color: '#9a3412', marginBottom: '8px' }}>個人情報の非開示保護が有効です</strong>
@@ -723,7 +1538,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                       厚生労働省の法的基準に基づき、本人の明示的な同意がないため、詳細な回答データ、18尺度スコア、および高ストレス該当の合否はマスキングされ閲覧できません。
                     </p>
                     
-                    {/* マスク表現 */}
                     <div className="masked-data-mock mt-4" style={{ width: '100%', border: '1px dashed #cbd5e1', padding: '10px', background: 'rgba(255,255,255,0.5)', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                       <div>仕事のストレス要因: *** / 5段階</div>
                       <div>心身のストレス反応: *** / 5段階</div>
@@ -732,7 +1546,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                     </div>
                   </div>
                 ) : (
-                  // =================== 開示同意あり (詳細スコア閲覧可能) ===================
                   <div className="fade-in">
                     <div className="alert-badge success mb-4" style={{ borderRadius: '6px', fontSize: '0.8rem' }}>
                       <Check size={16} style={{ marginRight: '6px' }} />
@@ -758,14 +1571,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                       </div>
                     </div>
 
-                    {/* レーダーチャートの表示 */}
                     <div style={{ maxWidth: '320px', margin: '0 auto 1.5rem' }}>
                       <Radar 
                         data={{
                           labels: ['仕事の量', '仕事の質', '仕事の裁量度', '職場の対人関係', '活気', 'イライラ感', '疲労感', '不安感', '抑うつ感', '身体愁訴', '上司のサポート', '同僚のサポート', '満足度'],
                           datasets: [
                             {
-                              label: 'スコア（5段階、高いほど良好）',
+                              label: 'スコア（高いほど良好）',
                               data: [
                                 selectedResult.subscales.jobQuantity,
                                 selectedResult.subscales.jobQuality,
@@ -806,7 +1618,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                 )}
               </div>
 
-              {/* 医師面接希望の申請フォーム回答データ */}
               <div className="mb-2" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
                 <h4 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px' }}>🩺 医師面接指導の希望状況</h4>
                 
@@ -851,6 +1662,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       )}
 
       <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
         .admin-portal-container {
           width: 100%;
         }
@@ -897,116 +1711,55 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           border-radius: 4px;
           border: 1px solid #bfdbfe;
         }
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-          gap: 1rem;
-          width: 100%;
-        }
-        .stat-card {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 12px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-        .stat-label {
-          font-size: 0.75rem;
-          color: var(--text-muted);
-          margin-bottom: 4px;
-          text-align: center;
-        }
-        .stat-val {
-          font-size: 1.5rem;
-          font-weight: 800;
-        }
-        .consent-badge {
-          font-size: 0.75rem;
-          padding: 2px 8px;
-          border-radius: 4px;
-          display: inline-block;
-          font-weight: 600;
-        }
-        .consent-badge.agreed {
-          background: #f0fdf4;
-          color: #16a34a;
-          border: 1px solid #dcfce7;
-        }
-        .consent-badge.disagreed {
-          background: #fff1f2;
-          color: #e11d48;
-          border: 1px solid #ffe4e6;
-        }
-        .masked-indicator {
-          font-size: 0.75rem;
-          color: #d97706;
-          background: #fffbeb;
-          border: 1px solid #fef3c7;
-          padding: 2px 8px;
-          border-radius: 4px;
-          display: inline-flex;
-          align-items: center;
-          font-weight: 600;
-        }
-        .highstress-badge {
-          font-size: 0.75rem;
-          padding: 2px 8px;
-          border-radius: 4px;
-          display: inline-block;
-          font-weight: 600;
-        }
-        .highstress-badge.yes {
-          background: #fff7ed;
-          color: #ea580c;
-          border: 1px solid #ffedd5;
-        }
-        .highstress-badge.no {
-          background: #f0fdf4;
-          color: #16a34a;
-          border: 1px solid #dcfce7;
-        }
-        .interview-badge {
-          font-size: 0.75rem;
-          padding: 2px 8px;
-          border-radius: 4px;
-          display: inline-block;
-          font-weight: 600;
-        }
-        .interview-badge.yes {
-          background: #eff6ff;
-          color: #2563eb;
-          border: 1px solid #dbeafe;
-        }
-        .interview-badge.no {
-          background: #f1f5f9;
-          color: #475569;
-          border: 1px solid #e2e8f0;
-        }
         
-        /* モーダルオーバーレイ */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.4);
-          backdrop-filter: blur(4px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-          padding: 1rem;
+        /* CSV ドロップゾーン */
+        .csv-dropzone {
+          border: 2px dashed #3b82f6;
+          background: #eff6ff;
+          border-radius: 8px;
+          padding: 2rem 1.5rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
         }
-        .modal-content {
-          animation: modalFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-          border: 1px solid #cbd5e1;
+        .csv-dropzone:hover {
+          background: #dbeafe;
+          border-color: #2563eb;
         }
-        @keyframes modalFadeIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
+
+        /* スマートインポートセルエディタ */
+        .editor-table th, .editor-table td {
+          border-right: 1px solid #cbd5e1;
+        }
+        .editor-table th:last-child, .editor-table td:last-child {
+          border-right: none;
+        }
+        .editable-cell {
+          cursor: pointer;
+        }
+        .cell-error {
+          background-color: #fee2e2 !important;
+          border: 1.5px solid #dc2626 !important;
+        }
+        .grid-input {
+          width: 100%;
+          border: none;
+          background: transparent;
+          outline: none;
+          font-size: 0.8rem;
+          font-weight: 500;
+          padding: 2px 4px;
+          font-family: inherit;
+        }
+        .grid-input:focus {
+          background: white;
+          border-radius: 3px;
+          box-shadow: 0 0 2px rgba(30, 64, 175, 0.4);
+        }
+
+        /* 組織分析選択カード */
+        .selected-dept-card {
+          box-shadow: 0 4px 10px rgba(30, 64, 175, 0.15) !important;
+          background-color: #eff6ff !important;
         }
       `}</style>
     </div>

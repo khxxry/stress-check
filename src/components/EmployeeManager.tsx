@@ -21,6 +21,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
   const [formEmail, setFormEmail] = useState('');
   const [formBirthDate, setFormBirthDate] = useState('');
   const [formStatus, setFormStatus] = useState<'active' | 'inactive'>('active');
+  const [formDepartment, setFormDepartment] = useState('技術開発部');
 
   const [validationError, setValidationError] = useState('');
 
@@ -42,6 +43,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
     setFormEmail('');
     setFormBirthDate('');
     setFormStatus('active');
+    setFormDepartment('技術開発部');
     setValidationError('');
     setIsFormOpen(true);
   };
@@ -56,6 +58,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
     setFormEmail(emp.email);
     setFormBirthDate(emp.birthDate);
     setFormStatus(emp.status);
+    setFormDepartment(emp.department || '技術開発部');
     setValidationError('');
     setIsFormOpen(true);
   };
@@ -101,7 +104,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
         gender: formGender,
         email: formEmail.trim(),
         birthDate: formBirthDate,
-        status: formStatus
+        status: formStatus,
+        department: formDepartment.trim()
       };
 
       updatedEmployees.push(newEmp);
@@ -145,7 +149,8 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
           gender: formGender,
           email: formEmail.trim(),
           birthDate: formBirthDate,
-          status: formStatus
+          status: formStatus,
+          department: formDepartment.trim()
         };
         setEmployees(updatedEmployees);
         localStorage.setItem('stress_check_employees', JSON.stringify(updatedEmployees));
@@ -250,7 +255,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
                     <td style={{ padding: '12px 16px', fontWeight: 600, fontFamily: 'monospace' }}>{emp.employeeCode}</td>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontWeight: 500 }}>{emp.name}</div>
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>{emp.nameKana}</div>
+                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>{emp.nameKana} | {emp.department || '一般'}</div>
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span className={`gender-badge ${emp.gender === 'male' ? 'male' : 'female'}`} style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', display: 'inline-block' }}>
@@ -411,6 +416,22 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
                 >
                   <option value="active">有効（受検可能）</option>
                   <option value="inactive">無効（休職・退職など）</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontSize: '0.85rem' }}>
+                  所属部署
+                </label>
+                <select
+                  className="form-control"
+                  value={formDepartment}
+                  onChange={(e) => setFormDepartment(e.target.value)}
+                >
+                  <option value="技術開発部">技術開発部</option>
+                  <option value="グローバル営業部">グローバル営業部</option>
+                  <option value="人事総務部">人事総務部</option>
+                  <option value="企画マーケティング部">企画マーケティング部</option>
                 </select>
               </div>
 

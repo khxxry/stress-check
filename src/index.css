@@ -819,3 +819,72 @@ body {
   border-radius: 8px;
   padding: 1.25rem;
 }
+
+/* ==========================================
+   フェーズ3用スマートインポート・ダッシュボード
+   ========================================== */
+.csv-dropzone {
+  border: 2px dashed #3b82f6;
+  background: #eff6ff;
+  border-radius: 8px;
+  padding: 2rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.csv-dropzone:hover {
+  background: #dbeafe;
+  border-color: #2563eb;
+}
+
+.editor-table th, .editor-table td {
+  border-right: 1px solid #cbd5e1;
+}
+
+.editor-table th:last-child, .editor-table td:last-child {
+  border-right: none;
+}
+
+.editable-cell {
+  cursor: pointer;
+}
+
+.cell-error {
+  background-color: #fee2e2 !important;
+  border: 1.5px solid #dc2626 !important;
+}
+
+.grid-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 2px 4px;
+  font-family: inherit;
+}
+
+.grid-input:focus {
+  background: white;
+  border-radius: 3px;
+  box-shadow: 0 0 2px rgba(30, 64, 175, 0.4);
+}
+
+.selected-dept-card {
+  box-shadow: 0 4px 10px rgba(30, 64, 175, 0.15) !important;
+  background-color: #eff6ff !important;
+  border-color: var(--primary) !important;
+}
+
+.locked-dashboard-overlay {
+  position: relative;
+  overflow: hidden;
+}
+
+.results-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 8px;
+}

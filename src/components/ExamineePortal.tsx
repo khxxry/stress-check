@@ -168,7 +168,8 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
       gender: 'male',
       email: 'guest@example.com',
       birthDate: '1990-01-01',
-      status: 'active'
+      status: 'active',
+      department: '技術開発部'
     };
     setLoggedInEmployee(guestEmp);
     setEmployeeCode(guestEmp.employeeCode);
