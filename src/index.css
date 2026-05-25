@@ -119,3 +119,235 @@ body {
   color: var(--primary);
   font-weight: 600;
 }
+
+/* 簡易ヘッダー（ルーティング用スイッチ） */
+.app-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.switch-nav {
+  display: flex;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+  padding: 4px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.switch-btn {
+  padding: 0.5rem 1.5rem;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.switch-btn.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(30, 64, 175, 0.2);
+}
+
+/* スライドトランジション用 */
+.slide-container {
+  overflow: hidden;
+  position: relative;
+}
+
+.slide-content {
+  transition: transform 0.30s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+  opacity: 1;
+}
+
+.slide-out-left {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.slide-out-right {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.slide-in-right {
+  animation: slideInRight 0.30s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.30s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* マインドフルネス呼吸アシスト */
+.breathe-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.5) 0%, rgba(255, 255, 255, 0.8) 100%);
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(219, 234, 254, 0.5);
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.breathe-circle-wrapper {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.breathe-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--primary-light) 0%, var(--primary) 100%);
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+  animation: breatheCycle 8s infinite ease-in-out;
+}
+
+.breathe-ripple {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 2px solid var(--primary-light);
+  opacity: 0;
+  animation: breatheRipple 8s infinite ease-in-out;
+}
+
+.breathe-instruction {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  height: 2rem;
+  margin-bottom: 1rem;
+}
+
+@keyframes breatheCycle {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+  }
+  40%, 60% {
+    transform: scale(1.8);
+    box-shadow: 0 0 60px rgba(59, 130, 246, 0.6);
+  }
+}
+
+@keyframes breatheRipple {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  40%, 60% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* 管理者画面用プレースホルダー */
+.admin-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-header {
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.wizard-steps {
+  display: flex;
+  justify-content: space-between;
+  background: #f1f5f9;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.wizard-step {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wizard-step.active {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.wizard-step-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+}
+
+.wizard-step.active .wizard-step-num {
+  background: var(--primary);
+}
+
+.admin-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-control:focus {
+  border-color: var(--primary);
+}
+
