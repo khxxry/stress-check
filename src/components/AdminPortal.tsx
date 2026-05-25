@@ -884,7 +884,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
           </div>
           
-          <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <label className="text-xs font-bold text-gray-500 dark:text-gray-400">管理者コンテキスト:</label>
             <select
               value={activeUser ? activeUser.userId : ''}
@@ -903,6 +903,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                 </option>
               ))}
             </select>
+            
+            <button
+              onClick={() => {
+                if (window.confirm('すべてのローカルストレージデータを削除し、初期デモ状態（一貫性のあるデータ）にリセットしますか？\n※ページは自動的にリロードされます。')) {
+                  localStorage.clear();
+                  window.location.reload();
+                }
+              }}
+              className="btn btn-outline"
+              style={{
+                padding: '0.35rem 0.75rem',
+                fontSize: '0.75rem',
+                borderRadius: '6px',
+                borderColor: '#fca5a5',
+                color: '#dc2626',
+                background: '#fef2f2',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 700
+              }}
+            >
+              <RefreshCw size={12} />
+              デモデータ初期化
+            </button>
           </div>
         </div>
       </details>
