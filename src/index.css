@@ -888,3 +888,56 @@ body {
   border-bottom: 1px solid #e2e8f0;
   padding-bottom: 8px;
 }
+
+/* ==========================================
+   SaaSマルチテナント & Super Admin Portal用
+   ========================================== */
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.plan-badge-basic {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.plan-badge-premium {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.plan-badge-enterprise {
+  background: #faf5ff;
+  color: #7c3aed;
+  border: 1px solid #e9d5ff;
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.1);
+}
+
+.tenant-context-bar {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+  animation: slideInDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.super-admin-container {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.super-admin-header {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1.5rem;
+}
+
+@keyframes slideInDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}

@@ -4,9 +4,10 @@ import { Edit2, Trash2, Plus, Search, X, AlertCircle } from 'lucide-react';
 
 interface EmployeeManagerProps {
   onNotify: (message: string, type: 'success' | 'error') => void;
+  activeCorpId: string;
 }
 
-export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) => {
+export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify, activeCorpId }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -25,13 +26,31 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
 
   const [validationError, setValidationError] = useState('');
 
-  // LocalStorageから従業員リストをロード
+  // LocalStorageから自テナントの従業員リストをロード
   useEffect(() => {
     const stored = localStorage.getItem('stress_check_employees');
     if (stored) {
-      setEmployees(JSON.parse(stored));
+      const allEmps: Employee[] = JSON.parse(stored);
+      const filtered = allEmps.filter(emp => emp.corporationId === activeCorpId);
+      setEmployees(filtered);
+    } else {
+      setEmployees([]);
     }
-  }, []);
+  }, [activeCorpId]);
+
+  // マージしてLocalStorage全体に保存するヘルパー関数（他企業のデータを破壊しない）
+  const saveAllEmployees = (updatedSelfEmps: Employee[]) => {
+    const stored = localStorage.getItem('stress_check_employees');
+    const allEmps: Employee[] = stored ? JSON.parse(stored) : [];
+    
+    // 他企業のデータを抽出
+    const otherCorpEmps = allEmps.filter(emp => emp.corporationId !== activeCorpId);
+    
+    // 自企業の新しいリストとマージして保存
+    const finalEmps = [...otherCorpEmps, ...updatedSelfEmps];
+    localStorage.setItem('stress_check_employees', JSON.stringify(finalEmps));
+    setEmployees(updatedSelfEmps);
+  };
 
   // フォームを開く（新規追加）
   const handleOpenAdd = () => {
@@ -90,14 +109,15 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
 
     if (editingEmployee === null) {
       // 1. 新規登録
-      // 社員番号の重複チェック
+      // 自社内で社員番号の重複チェック
       const exists = employees.some(emp => emp.employeeCode === formCode.trim());
       if (exists) {
-        setValidationError('この社員番号は既に登録されています。');
+        setValidationError('この社員番号は既にあなたの企業で登録されています。');
         return;
       }
 
       const newEmp: Employee = {
+        corporationId: activeCorpId,
         employeeCode: formCode.trim(),
         name: formName.trim(),
         nameKana: formNameKana.trim(),
@@ -109,28 +129,27 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
       };
 
       updatedEmployees.push(newEmp);
-      setEmployees(updatedEmployees);
-      localStorage.setItem('stress_check_employees', JSON.stringify(updatedEmployees));
+      saveAllEmployees(updatedEmployees);
       onNotify('従業員を登録しました。', 'success');
     } else {
       // 2. 編集保存
       const oldCode = editingEmployee.employeeCode;
       const newCode = formCode.trim();
 
-      // 社員番号変更時の重複チェック
+      // 社員番号変更時の自社内重複チェック
       if (oldCode !== newCode) {
         const exists = employees.some(emp => emp.employeeCode === newCode);
         if (exists) {
-          setValidationError('変更後の社員番号は既に他の社員で使用されています。');
+          setValidationError('変更後の社員番号は既にあなたの企業で使用されています。');
           return;
         }
 
-        // 社員番号が変更された場合、カスケード（連動）更新を実行
+        // 社員番号が変更された場合、カスケード（連動）更新を実行（自社の受検結果のみ）
         const storedResults = localStorage.getItem('stress_check_results');
         if (storedResults) {
           const results: ExamineeResult[] = JSON.parse(storedResults);
           const updatedResults = results.map(res => {
-            if (res.employeeCode === oldCode) {
+            if (res.corporationId === activeCorpId && res.employeeCode === oldCode) {
               return { ...res, employeeCode: newCode };
             }
             return res;
@@ -143,6 +162,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
       const index = employees.findIndex(emp => emp.employeeCode === oldCode);
       if (index !== -1) {
         updatedEmployees[index] = {
+          corporationId: activeCorpId,
           employeeCode: newCode,
           name: formName.trim(),
           nameKana: formNameKana.trim(),
@@ -152,8 +172,7 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
           status: formStatus,
           department: formDepartment.trim()
         };
-        setEmployees(updatedEmployees);
-        localStorage.setItem('stress_check_employees', JSON.stringify(updatedEmployees));
+        saveAllEmployees(updatedEmployees);
         onNotify('従業員情報を更新しました。', 'success');
       }
     }
@@ -163,19 +182,20 @@ export const EmployeeManager: React.FC<EmployeeManagerProps> = ({ onNotify }) =>
 
   // 従業員の削除
   const handleDelete = (emp: Employee) => {
-    if (window.confirm(`従業員「${emp.name}」を削除しますか？\n※紐付いている受検履歴もすべて削除されます。`)) {
+    if (window.confirm(`従業員「${emp.name}」を削除しますか？\n※この企業内での受検履歴もすべて削除されます。`)) {
       const codeToDelete = emp.employeeCode;
       
       // 従業員マスタから削除
       const updatedEmployees = employees.filter(e => e.employeeCode !== codeToDelete);
-      setEmployees(updatedEmployees);
-      localStorage.setItem('stress_check_employees', JSON.stringify(updatedEmployees));
+      saveAllEmployees(updatedEmployees);
 
-      // 紐付く受検結果も削除（カスケード削除）
+      // 紐付く受検結果も削除（自社のデータのみカスケード削除）
       const storedResults = localStorage.getItem('stress_check_results');
       if (storedResults) {
         const results: ExamineeResult[] = JSON.parse(storedResults);
-        const updatedResults = results.filter(res => res.employeeCode !== codeToDelete);
+        const updatedResults = results.filter(res => 
+          !(res.corporationId === activeCorpId && res.employeeCode === codeToDelete)
+        );
         localStorage.setItem('stress_check_results', JSON.stringify(updatedResults));
       }
 

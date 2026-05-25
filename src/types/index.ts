@@ -1,6 +1,24 @@
 import { Gender } from '../utils/scoring';
 
+export interface Corporation {
+  corporationId: string; // 企業コード (一意)
+  name: string;          // 企業名
+  plan: 'basic' | 'premium' | 'enterprise'; // 契約プラン
+  status: 'active' | 'suspended';           // 契約ステータス
+  createdAt: string;     // 登録日 (YYYY-MM-DD)
+}
+
+export interface CorporateUser {
+  userId: string;        // ユーザーID/コード (一意)
+  corporationId: string; // 所属企業コード (FK)
+  name: string;          // 管理者名
+  email: string;         // メールアドレス
+  role: 'admin' | 'practitioner'; // 権限: 実施管理者 | 共同閲覧者
+  status: 'active' | 'inactive';  // ステータス
+}
+
 export interface Employee {
+  corporationId: string; // 所属企業コード (FK)
   employeeCode: string;
   name: string;
   nameKana: string;
@@ -43,6 +61,7 @@ export interface InterviewDetails {
 
 export interface ExamineeResult {
   id: string; // Unique submission id
+  corporationId: string; // 受検時の所属企業コード
   employeeCode: string;
   campaignName: string; // Campaign identifier
   answers: Record<number, number>;

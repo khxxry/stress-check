@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { questions } from '../data/questions';
 import { calculateScoring, ScoringResult, Gender } from '../utils/scoring';
-import { CampaignSettings, ConsentSettings, InterviewSettings, Employee, ExamineeResult, InterviewDetails } from '../types';
+import { Corporation, CampaignSettings, ConsentSettings, InterviewSettings, Employee, ExamineeResult, InterviewDetails } from '../types';
 import { Radar } from 'react-chartjs-2';
 import { Activity, AlertTriangle, CheckCircle, ArrowRight, ArrowLeft, RefreshCw, Sparkles, ShieldCheck, Mail, Phone, Calendar, Lock } from 'lucide-react';
 
@@ -21,7 +21,8 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
   const [isLocked, setIsLocked] = useState(false);
   const [step, setStep] = useState<'login' | 'start' | 'consent_before' | 'questions' | 'consent_after' | 'mindfulness' | 'result'>('login');
   
-  // 受検従業員情報
+  // 受検者テナント & 従業員情報
+  const [corporationId, setCorporationId] = useState('');
   const [employeeCode, setEmployeeCode] = useState('');
   const [loggedInEmployee, setLoggedInEmployee] = useState<Employee | null>(null);
   const [gender, setGender] = useState<Gender>('male');
@@ -48,27 +49,52 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
   const [interviewSubmitted, setInterviewSubmitted] = useState(false);
 
   // ==========================================
-  // 2. 設定のロード ＆ 実施期間ロックアウト判定
+  // 2. テナント固有設定のロード
   // ==========================================
-  useEffect(() => {
+  const loadTenantSettings = (corpCode: string): boolean => {
     // 1. キャンペーン設定
-    const storedCampaign = localStorage.getItem('stress_check_campaign');
+    const storedCampaign = localStorage.getItem(`stress_check_campaign_${corpCode}`);
     let camp: CampaignSettings | null = null;
     if (storedCampaign) {
       camp = JSON.parse(storedCampaign);
       setCampaignSettings(camp);
+    } else {
+      // フォールバック用の初期キャンペーン
+      camp = {
+        campaignName: '令和8年度 ストレスチェック',
+        startDate: '2026-05-01T00:00',
+        endDate: '2026-06-30T23:59',
+        customNoticeStart: '日頃のストレス状況を把握し、健康的なワークライフを送るためのチェックです。正直にお答えください（所要時間約5分）。',
+        customNoticeHighStress: '判定の結果、ストレス反応が高い状態であることがわかりました。自身の心身の健康のため、医師面接等のセルフケアをご検討ください。',
+        status: 'active'
+      };
+      setCampaignSettings(camp);
     }
 
     // 2. 同意設定
-    const storedConsent = localStorage.getItem('stress_check_consent');
+    const storedConsent = localStorage.getItem(`stress_check_consent_${corpCode}`);
     if (storedConsent) {
       setConsentSettings(JSON.parse(storedConsent));
+    } else {
+      setConsentSettings({
+        useConsent: true,
+        discloseLabel: '事業者',
+        discloseNotice: '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。同意された場合、結果は職場環境の改善や必要に応じた産業医面談等の健康管理のために利用されます。同意されない場合でも、受検したことのみをもって不利益な取り扱いを受けることはありません。',
+        consentTiming: 'after'
+      });
     }
 
     // 3. 面接設定
-    const storedInterview = localStorage.getItem('stress_check_interview');
+    const storedInterview = localStorage.getItem(`stress_check_interview_${corpCode}`);
     if (storedInterview) {
       setInterviewSettings(JSON.parse(storedInterview));
+    } else {
+      setInterviewSettings({
+        displayCondition: 'high_stress_only',
+        requireDisclosure: 'required',
+        receptionDays: 14,
+        notificationEmails: 'safety@example.com'
+      });
     }
 
     // 期間ロックアウト判定
@@ -78,9 +104,13 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
       const end = new Date(camp.endDate);
       if (now < start || now > end) {
         setIsLocked(true);
+      } else {
+        setIsLocked(false);
       }
     }
-  }, []);
+    
+    return true;
+  };
 
   // キーボードナビゲーション
   useEffect(() => {
@@ -131,37 +161,65 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
   // ログイン処理
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!corporationId.trim()) {
+      onNotify('企業コードを入力してください。', 'error');
+      return;
+    }
     if (!employeeCode.trim()) {
       onNotify('社員番号を入力してください。', 'error');
       return;
     }
 
+    const corpCode = corporationId.trim().toUpperCase();
+    const empCode = employeeCode.trim();
+
+    // 1. 企業存在チェック
+    const storedCorps = localStorage.getItem('stress_check_corporations');
+    const corps: Corporation[] = storedCorps ? JSON.parse(storedCorps) : [];
+    const foundCorp = corps.find(c => c.corporationId === corpCode);
+
+    if (!foundCorp) {
+      onNotify('入力された企業コードが見つかりません。', 'error');
+      return;
+    }
+
+    if (foundCorp.status === 'suspended') {
+      onNotify('この企業の契約は現在一時停止されています。システム管理者にお問い合わせください。', 'error');
+      return;
+    }
+
+    // 2. 従業員存在チェック
     const storedEmployees = localStorage.getItem('stress_check_employees');
     if (storedEmployees) {
       const emps: Employee[] = JSON.parse(storedEmployees);
-      const found = emps.find(emp => emp.employeeCode === employeeCode.trim());
+      const found = emps.find(emp => emp.corporationId === corpCode && emp.employeeCode === empCode);
       
       if (found) {
         if (found.status === 'inactive') {
           onNotify('この社員番号は現在無効に設定されています。', 'error');
           return;
         }
+
+        // 3. テナント別の設定をロード
+        loadTenantSettings(corpCode);
+
         setLoggedInEmployee(found);
         setGender(found.gender);
         setEmail(found.email);
         setStep('start');
-        onNotify(`${found.name}様としてログインしました。`, 'success');
+        onNotify(`${foundCorp.name}の${found.name}様としてログインしました。`, 'success');
       } else {
-        onNotify('登録されていない社員番号です。ゲスト受検または正しい番号を入力してください。', 'error');
+        onNotify('登録されていない社員番号、または所属企業が一致しません。', 'error');
       }
     } else {
-      onNotify('従業員マスタが登録されていません。ゲストとして受検してください。', 'error');
+      onNotify('従業員マスタが登録されていません。', 'error');
     }
   };
 
   // ゲスト受検（テストをスムーズにするためのバイパス）
   const handleGuestLogin = () => {
     const guestEmp: Employee = {
+      corporationId: 'CORP001',
       employeeCode: `GUEST-${Math.floor(1000 + Math.random() * 9000)}`,
       name: 'テスト受検者 (ゲスト)',
       nameKana: 'テストジュケンシャ',
@@ -171,11 +229,16 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
       status: 'active',
       department: '技術開発部'
     };
+    
+    // CORP001 (テクノロジーラボ) の設定をロード
+    loadTenantSettings('CORP001');
+
     setLoggedInEmployee(guestEmp);
+    setCorporationId('CORP001');
     setEmployeeCode(guestEmp.employeeCode);
     setGender('male');
     setStep('start');
-    onNotify('ゲスト受検（テストモード）を開始します。', 'success');
+    onNotify('ゲスト受検（テストモード・テクノロジーラボ所属）を開始します。', 'success');
   };
 
   // 動的タグの文字列置換
@@ -261,6 +324,7 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
   const saveExamineeResult = (scoringResult: ScoringResult, isAgreed: boolean) => {
     const finalResult: ExamineeResult = {
       id: `${employeeCode}-${Date.now()}`,
+      corporationId: loggedInEmployee ? loggedInEmployee.corporationId : 'CORP001',
       employeeCode,
       campaignName: campaignSettings ? campaignSettings.campaignName : '標準キャンペーン',
       answers,
@@ -308,8 +372,11 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
     const stored = localStorage.getItem('stress_check_results');
     if (stored) {
       const list: ExamineeResult[] = JSON.parse(stored);
-      // 一番最後の自分の受検レコードを検索
-      const myResultIndex = [...list].reverse().findIndex(res => res.employeeCode === employeeCode);
+      // 一番最後の自分の受検レコードを検索（企業コードも含めてマッチさせる）
+      const targetCorpId = loggedInEmployee ? loggedInEmployee.corporationId : 'CORP001';
+      const myResultIndex = [...list].reverse().findIndex(res => 
+        res.employeeCode === employeeCode && res.corporationId === targetCorpId
+      );
       
       if (myResultIndex !== -1) {
         const actualIndex = list.length - 1 - myResultIndex;
@@ -338,6 +405,7 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
 
   // 最初からやり直す
   const handleRestart = () => {
+    setCorporationId('');
     setEmployeeCode('');
     setLoggedInEmployee(null);
     setCurrentIndex(0);
@@ -402,6 +470,17 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
           </div>
 
           <form onSubmit={handleLogin}>
+            <div className="form-group" style={{ marginBottom: '1rem' }}>
+              <label className="form-label">企業コード (Corporate Code)</label>
+              <input
+                type="text"
+                className="form-control"
+                value={corporationId}
+                onChange={(e) => setCorporationId(e.target.value)}
+                placeholder="例: CORP001"
+                style={{ textAlign: 'center', letterSpacing: '2px', fontWeight: 700, textTransform: 'uppercase' }}
+              />
+            </div>
             <div className="form-group">
               <label className="form-label">社員番号 (Employee ID)</label>
               <input
@@ -427,7 +506,7 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
             ゲスト（デモ・テスト用）として受検する
           </button>
           <div className="feature-info mt-4" style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            💡 <strong>テストガイド:</strong> マスタ登録された `EMP001` (山田様), `EMP002` (佐藤様) でも直接ログインできます。
+            💡 <strong>テストガイド:</strong> テクノロジーラボは `CORP001` + `EMP001`、グローバル営業本部は `CORP002` + `EMP013` でログイン可能です。
           </div>
         </div>
       )}

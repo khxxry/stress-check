@@ -1,97 +1,168 @@
 import React, { useState, useEffect } from 'react';
 import { ExamineePortal } from './components/ExamineePortal';
 import { AdminPortal } from './components/AdminPortal';
-import { CampaignSettings, ConsentSettings, InterviewSettings, Employee, ExamineeResult } from './types';
+import { SuperAdminPortal } from './components/SuperAdminPortal';
+import { SuperAdminLogin } from './components/SuperAdminLogin';
+import { Corporation, CorporateUser, CampaignSettings, ConsentSettings, InterviewSettings, Employee, ExamineeResult } from './types';
 import { calculateScoring, Gender } from './utils/scoring';
-import { Eye, Settings, Bell } from 'lucide-react';
+import { Eye, Settings, Bell, ShieldAlert } from 'lucide-react';
 
-type Mode = 'examinee' | 'admin';
+type Mode = 'examinee' | 'admin' | 'super_admin';
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>('examinee');
+  const [isSuperAdminAuthenticated, setIsSuperAdminAuthenticated] = useState<boolean>(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // ==========================================
-  // 初期データシード (LocalStorage初期化)
+  // 初期データシード (SaaS型マルチテナント初期化)
   // ==========================================
   useEffect(() => {
     const now = new Date();
     
-    // 1. キャンペーン初期設定 (開始: 1時間前, 終了: 14日後 ➜ デフォルトで受検可能に)
-    if (!localStorage.getItem('stress_check_campaign')) {
+    // 1. 企業マスタ (Corporations) のシード
+    if (!localStorage.getItem('stress_check_corporations')) {
+      const defaultCorps: Corporation[] = [
+        {
+          corporationId: 'CORP001',
+          name: '株式会社テクノロジーラボ',
+          plan: 'premium',
+          status: 'active',
+          createdAt: '2026-04-01'
+        },
+        {
+          corporationId: 'CORP002',
+          name: 'グローバル営業本部株式会社',
+          plan: 'basic',
+          status: 'active',
+          createdAt: '2026-04-15'
+        }
+      ];
+      localStorage.setItem('stress_check_corporations', JSON.stringify(defaultCorps));
+    }
+
+    // 2. 企業管理者 (Corporate Users) のシード
+    if (!localStorage.getItem('stress_check_corporate_users')) {
+      const defaultUsers: CorporateUser[] = [
+        {
+          userId: 'USER001',
+          corporationId: 'CORP001',
+          name: '佐藤HR管理者',
+          email: 'sato@example.com',
+          role: 'admin',
+          status: 'active'
+        },
+        {
+          userId: 'USER002',
+          corporationId: 'CORP002',
+          name: '鈴木営業管理者',
+          email: 'suzuki@example.com',
+          role: 'admin',
+          status: 'active'
+        }
+      ];
+      localStorage.setItem('stress_check_corporate_users', JSON.stringify(defaultUsers));
+    }
+
+    // 3. テナント別のストレスチェック設定のシード
+    // CORP001用
+    if (!localStorage.getItem('stress_check_campaign_CORP001')) {
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       const fourteenDaysLater = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-
       const defaultCampaign: CampaignSettings = {
-        campaignName: '2026年度 春期定期ストレスチェック',
+        campaignName: '令和8年度 春期定期ストレスチェック',
         startDate: formatDateToDateTimeLocal(oneHourAgo),
         endDate: formatDateToDateTimeLocal(fourteenDaysLater),
-        customNoticeStart: '厚生労働省の標準「職業性ストレス簡易調査票（57項目）」に準拠した、あなたのストレス状態を評価する診断です。',
-        customNoticeHighStress: '厚生労働省が定める高ストレス判定基準に基づき、ストレスの負荷が高い状態であると評価されました。ご自身の体調を第一に考え、必要に応じて管理者に相談の上、医師による面接指導をお申し込みいただくことをお勧めします。',
+        customNoticeStart: '日頃のストレス状況を把握し、健康的なワークライフを送るためのチェックです。正直にお答えください（所要時間約5分）。',
+        customNoticeHighStress: '判定の結果、ストレス反応が高い状態であることがわかりました。自身の心身の健康のため、医師面接等のセルフケアをご検討ください。',
         status: 'active'
       };
-      localStorage.setItem('stress_check_campaign', JSON.stringify(defaultCampaign));
-    }
-
-    // 2. 結果開示同意初期設定
-    if (!localStorage.getItem('stress_check_consent')) {
+      localStorage.setItem('stress_check_campaign_CORP001', JSON.stringify(defaultCampaign));
+      
       const defaultConsent: ConsentSettings = {
         useConsent: true,
-        discloseLabel: '事業者',
-        discloseNotice: 'このストレスチェックは、個人情報保護方針に基づき実施されます。あなたの同意がある場合のみ、結果が事業者に共有されます。同意しないことで不利益な扱いを受けることは一切ありません。',
-        consentTiming: 'after' // 受検完了直後
+        discloseLabel: 'テクノロジーラボ',
+        discloseNotice: '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。同意された場合、結果は職場環境の改善や必要に応じた産業医面談等の健康管理のために利用されます。',
+        consentTiming: 'after'
       };
-      localStorage.setItem('stress_check_consent', JSON.stringify(defaultConsent));
-    }
+      localStorage.setItem('stress_check_consent_CORP001', JSON.stringify(defaultConsent));
 
-    // 3. 医師面接受付初期設定
-    if (!localStorage.getItem('stress_check_interview')) {
       const defaultInterview: InterviewSettings = {
         displayCondition: 'high_stress_only',
         requireDisclosure: 'required',
-        receptionDays: 30,
-        notificationEmails: 'hoken@company.com'
+        receptionDays: 14,
+        notificationEmails: 'sato@example.com'
       };
-      localStorage.setItem('stress_check_interview', JSON.stringify(defaultInterview));
+      localStorage.setItem('stress_check_interview_CORP001', JSON.stringify(defaultInterview));
     }
 
-    // 4. 従業員マスタシードデータ (16名 - 組織分析用に拡張)
+    // CORP002用
+    if (!localStorage.getItem('stress_check_campaign_CORP002')) {
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const fourteenDaysLater = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+      const defaultCampaign: CampaignSettings = {
+        campaignName: 'グローバル営業 メンタルケア調査',
+        startDate: formatDateToDateTimeLocal(oneHourAgo),
+        endDate: formatDateToDateTimeLocal(fourteenDaysLater),
+        customNoticeStart: '営業職特有の労働負荷状況を捉え、安全かつ良好な業務姿勢を維持するための適性評価です。ご協力ください。',
+        customNoticeHighStress: '判定スコアに負荷の偏りが見受けられました。速やかに産業医面談などのカウンセリングを実施することをお勧めします。',
+        status: 'active'
+      };
+      localStorage.setItem('stress_check_campaign_CORP002', JSON.stringify(defaultCampaign));
+      
+      const defaultConsent: ConsentSettings = {
+        useConsent: true,
+        discloseLabel: 'グローバル営業本部',
+        discloseNotice: '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。',
+        consentTiming: 'before' // 開始前の同意
+      };
+      localStorage.setItem('stress_check_consent_CORP002', JSON.stringify(defaultConsent));
+
+      const defaultInterview: InterviewSettings = {
+        displayCondition: 'all', // 全員に面談ボタン表示
+        requireDisclosure: 'required',
+        receptionDays: 30,
+        notificationEmails: 'suzuki@example.com'
+      };
+      localStorage.setItem('stress_check_interview_CORP002', JSON.stringify(defaultInterview));
+    }
+
+    // 4. 従業員マスタシードデータ (16名、企業ID割り当て)
     if (!localStorage.getItem('stress_check_employees')) {
       const defaultEmployees: Employee[] = [
-        // 技術開発部: 12名
-        { employeeCode: 'EMP001', name: '山田 太郎', nameKana: 'ヤマダ タロウ', gender: 'male', email: 'yamada@company.com', birthDate: '1985-04-12', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP002', name: '佐藤 花子', nameKana: 'サトウ ハナコ', gender: 'female', email: 'sato@company.com', birthDate: '1992-08-23', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP003', name: '鈴木 一郎', nameKana: 'スズキ イチロウ', gender: 'male', email: 'suzuki@company.com', birthDate: '1978-11-30', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP004', name: '高橋 健二', nameKana: 'タカハシ ケンジ', gender: 'male', email: 'takahashi@company.com', birthDate: '1989-05-15', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP005', name: '田中 裕子', nameKana: 'タナカ ユウコ', gender: 'female', email: 'tanaka@company.com', birthDate: '1995-12-04', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP006', name: '伊藤 茂', nameKana: 'イトウ シゲル', gender: 'male', email: 'ito@company.com', birthDate: '1972-07-18', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP007', name: '渡辺 恵', nameKana: 'ワタナベ メグミ', gender: 'female', email: 'watanabe@company.com', birthDate: '1988-02-09', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP008', name: '中村 淳', nameKana: 'ナカムラ ジュン', gender: 'male', email: 'nakamura@company.com', birthDate: '1981-09-27', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP009', name: '小林 礼子', nameKana: 'コバヤシ レイコ', gender: 'female', email: 'kobayashi@company.com', birthDate: '1994-06-14', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP010', name: '加藤 誠', nameKana: 'カトウ マコト', gender: 'male', email: 'kato@company.com', birthDate: '1980-03-31', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP011', name: '吉田 明美', nameKana: 'ヨシダ アケミ', gender: 'female', email: 'yoshida@company.com', birthDate: '1987-11-20', status: 'active', department: '技術開発部' },
-        { employeeCode: 'EMP012', name: '佐々木 弘', nameKana: 'ササキ ヒロシ', gender: 'male', email: 'sasaki@company.com', birthDate: '1975-10-05', status: 'active', department: '技術開発部' },
-
-        // グローバル営業部: 4名
-        { employeeCode: 'EMP013', name: '林 直樹', nameKana: 'ハヤシ ナオキ', gender: 'male', email: 'hayashi@company.com', birthDate: '1983-01-22', status: 'active', department: 'グローバル営業部' },
-        { employeeCode: 'EMP014', name: '清水 まどか', nameKana: 'シミズ マドカ', gender: 'female', email: 'shimizu@company.com', birthDate: '1991-04-17', status: 'active', department: 'グローバル営業部' },
-        { employeeCode: 'EMP015', name: '山崎 拓也', nameKana: 'ヤマザキ タクヤ', gender: 'male', email: 'yamazaki@company.com', birthDate: '1986-09-08', status: 'active', department: 'グローバル営業部' },
-        { employeeCode: 'EMP016', name: '森 佳代子', nameKana: 'モリ カヨコ', gender: 'female', email: 'mori@company.com', birthDate: '1993-11-12', status: 'active', department: 'グローバル営業部' }
+        // テクノロジーラボ (CORP001) 所属: 12名
+        { corporationId: 'CORP001', employeeCode: 'EMP001', name: '山田 太郎', nameKana: 'ヤマダ タロウ', gender: 'male', email: 'yamada@company.com', birthDate: '1985-04-12', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP002', name: '佐藤 花子', nameKana: 'サトウ ハナコ', gender: 'female', email: 'sato@company.com', birthDate: '1992-08-23', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP003', name: '鈴木 一郎', nameKana: 'スズキ イチロウ', gender: 'male', email: 'suzuki@company.com', birthDate: '1978-11-30', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP004', name: '高橋 健二', nameKana: 'タカハシ ケンジ', gender: 'male', email: 'takahashi@company.com', birthDate: '1989-05-15', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP005', name: '田中 裕子', nameKana: 'タナカ ユウコ', gender: 'female', email: 'tanaka@company.com', birthDate: '1995-12-04', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP006', name: '伊藤 茂', nameKana: 'イトウ シゲル', gender: 'male', email: 'ito@company.com', birthDate: '1972-07-18', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP007', name: '渡辺 恵', nameKana: 'ワタナベ メグミ', gender: 'female', email: 'watanabe@company.com', birthDate: '1988-02-09', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP008', name: '中村 淳', nameKana: 'ナカムラ ジュン', gender: 'male', email: 'nakamura@company.com', birthDate: '1981-09-27', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP009', name: '小林 礼子', nameKana: 'コバヤシ レイコ', gender: 'female', email: 'kobayashi@company.com', birthDate: '1994-06-14', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP010', name: '加藤 誠', nameKana: 'カトウ マコト', gender: 'male', email: 'kato@company.com', birthDate: '1980-03-31', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP011', name: '吉田 明美', nameKana: 'ヨシダ アケミ', gender: 'female', email: 'yoshida@company.com', birthDate: '1987-11-20', status: 'active', department: '技術開発部' },
+        { corporationId: 'CORP001', employeeCode: 'EMP012', name: '佐々木 弘', nameKana: 'ササキ ヒロシ', gender: 'male', email: 'sasaki@company.com', birthDate: '1975-10-05', status: 'active', department: '技術開発部' },
+ 
+        // グローバル営業本部 (CORP002) 所属: 4名
+        { corporationId: 'CORP002', employeeCode: 'EMP013', name: '林 直樹', nameKana: 'ハヤシ ナオキ', gender: 'male', email: 'hayashi@company.com', birthDate: '1983-01-22', status: 'active', department: 'グローバル営業部' },
+        { corporationId: 'CORP002', employeeCode: 'EMP014', name: '清水 まどか', nameKana: 'シミズ マドカ', gender: 'female', email: 'shimizu@company.com', birthDate: '1991-04-17', status: 'active', department: 'グローバル営業部' },
+        { corporationId: 'CORP002', employeeCode: 'EMP015', name: '山崎 拓也', nameKana: 'ヤマザキ タクヤ', gender: 'male', email: 'yamazaki@company.com', birthDate: '1986-09-08', status: 'active', department: 'グローバル営業部' },
+        { corporationId: 'CORP002', employeeCode: 'EMP016', name: '森 佳代子', nameKana: 'モリ カヨコ', gender: 'female', email: 'mori@company.com', birthDate: '1993-11-12', status: 'active', department: 'グローバル営業部' }
       ];
       localStorage.setItem('stress_check_employees', JSON.stringify(defaultEmployees));
     }
 
-    // 5. 受検結果ログのシード生成 (プログラムによる一括シード計算)
+    // 5. 受検結果ログのシード生成 (企業ID付き)
     if (!localStorage.getItem('stress_check_results')) {
       const seedResults: ExamineeResult[] = [];
 
-      // A. 技術開発部: 10名受検完了 (匿名性保護 10名基準を突破)
+      // A. テナント1 (CORP001): 10名受検完了 (匿名性保護 10名基準を突破)
       for (let i = 1; i <= 10; i++) {
         const empCode = `EMP${String(i).padStart(3, '0')}`;
         const isFemale = i === 2 || i === 5 || i === 7 || i === 9;
         const gender: Gender = isFemale ? 'female' : 'male';
         
-        // ダミー回答の生成 (i <= 3 は高ストレス、それ以外は低ストレス)
         const dummyAnswers: Record<number, number> = {};
         for (let q = 1; q <= 57; q++) {
           const isStressy = i <= 3;
@@ -104,15 +175,16 @@ const App: React.FC = () => {
 
         const score = calculateScoring(dummyAnswers, gender);
         seedResults.push({
-          id: `${empCode}-seed`,
+          id: `${empCode}-CORP001-seed`,
+          corporationId: 'CORP001',
           employeeCode: empCode,
-          campaignName: '2026年度 春期定期ストレスチェック',
+          campaignName: '令和8年度 春期定期ストレスチェック',
           answers: dummyAnswers,
           subscales: score.subscales,
           totalReactionScore: score.totalReactionScore,
           totalStressorSupportScore: score.totalStressorSupportScore,
           isHighStress: score.isHighStress,
-          consentDisclose: i !== 5, // EMP005 は開示「不同意」➜ マスキング検証用
+          consentDisclose: i !== 5, // EMP005 は開示「不同意」
           requestInterview: i === 1, // EMP001 は医師面接を希望
           interviewDetails: i === 1 ? {
             phone: '090-1234-5678',
@@ -124,7 +196,7 @@ const App: React.FC = () => {
         });
       }
 
-      // B. グローバル営業部: 3名受検完了 (匿名性保護 10名基準未満 ➜ ロック検証用)
+      // B. テナント2 (CORP002): 3名受検完了 (匿名性保護 10名基準未満 ➜ ロック確認用)
       for (let i = 13; i <= 15; i++) {
         const empCode = `EMP${String(i).padStart(3, '0')}`;
         const gender: Gender = i === 14 ? 'female' : 'male';
@@ -136,9 +208,10 @@ const App: React.FC = () => {
 
         const score = calculateScoring(dummyAnswers, gender);
         seedResults.push({
-          id: `${empCode}-seed`,
+          id: `${empCode}-CORP002-seed`,
+          corporationId: 'CORP002',
           employeeCode: empCode,
-          campaignName: '2026年度 春期定期ストレスチェック',
+          campaignName: 'グローバル営業 メンタルケア調査',
           answers: dummyAnswers,
           subscales: score.subscales,
           totalReactionScore: score.totalReactionScore,
@@ -176,6 +249,17 @@ const App: React.FC = () => {
     }
   }, [toast]);
 
+  const handleSuperAdminLoginSuccess = () => {
+    setIsSuperAdminAuthenticated(true);
+    handleNotify('システム管理者として認証されました。', 'success');
+  };
+
+  const handleSuperAdminLogout = () => {
+    setIsSuperAdminAuthenticated(false);
+    setMode('examinee');
+    handleNotify('システム管理者ポータルからログアウトしました。', 'success');
+  };
+
   return (
     <div className="app-container">
       {/* プレミアムグローバルヘッダー */}
@@ -193,8 +277,17 @@ const App: React.FC = () => {
             onClick={() => setMode('admin')}
           >
             <Settings size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-            管理者画面
+            企業管理者画面
           </button>
+          {isSuperAdminAuthenticated && (
+            <button 
+              className={`switch-btn ${mode === 'super_admin' ? 'active' : ''}`}
+              onClick={() => setMode('super_admin')}
+            >
+              <ShieldAlert size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+              システム管理者画面
+            </button>
+          )}
         </div>
       </div>
 
@@ -215,11 +308,40 @@ const App: React.FC = () => {
             onComplete={() => handleNotify('受検者セッションがリセットされました。', 'success')} 
           />
         </div>
-      ) : (
+      ) : mode === 'admin' ? (
         <div className="container">
           <AdminPortal onNotify={handleNotify} />
         </div>
+      ) : (
+        <div className="container">
+          {isSuperAdminAuthenticated ? (
+            <SuperAdminPortal onNotify={handleNotify} onLogout={handleSuperAdminLogout} />
+          ) : (
+            <SuperAdminLogin 
+              onNotify={handleNotify} 
+              onSuccess={handleSuperAdminLoginSuccess} 
+              onCancel={() => setMode('examinee')} 
+            />
+          )}
+        </div>
       )}
+
+      {/* プレミアムフッター（システム管理者用エントリ） */}
+      <div className="app-footer" style={{ marginTop: '4rem', width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid rgba(226, 232, 240, 0.4)', paddingTop: '1.5rem', paddingBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+          <span>© 2026 Stress Check SaaS. All Rights Reserved.</span>
+          <span style={{ color: '#cbd5e1' }}>|</span>
+          <button
+            onClick={() => {
+              setMode('super_admin');
+            }}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', textDecoration: 'underline' }}
+          >
+            <ShieldAlert size={12} />
+            システム管理者用ログイン
+          </button>
+        </div>
+      </div>
 
       {/* グローバル追加スタイル */}
       <style>{`

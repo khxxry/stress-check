@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CampaignSettings, ConsentSettings, InterviewSettings, ExamineeResult, Employee } from '../types';
+import { CorporateUser, CampaignSettings, ConsentSettings, InterviewSettings, ExamineeResult, Employee } from '../types';
 import { EmployeeManager } from './EmployeeManager';
 import { Radar, Bar } from 'react-chartjs-2';
 import {
@@ -16,7 +16,7 @@ import {
   ArcElement,
   Title
 } from 'chart.js';
-import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, Upload, AlertCircle, RefreshCw, Mail, Download, BarChart2 } from 'lucide-react';
+import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, Upload, AlertCircle, RefreshCw, Mail, Download, BarChart2, Building2 } from 'lucide-react';
 
 ChartJS.register(
   RadialLinearScale,
@@ -56,6 +56,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [activeTab, setActiveTab] = useState<'wizard' | 'results' | 'employees'>('wizard');
   const [resultsSubTab, setResultsSubTab] = useState<'list' | 'dashboard'>('list');
   
+  // ==========================================
+  // 0. テナント・企業管理者コンテキスト
+  // ==========================================
+  const [corporateUsers, setCorporateUsers] = useState<CorporateUser[]>([]);
+  const [activeUser, setActiveUser] = useState<CorporateUser | null>(null);
+
   // ==========================================
   // 1. 管理者設定状態 (Wizard)
   // ==========================================
@@ -111,9 +117,109 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [reminderProgress, setReminderProgress] = useState(0);
   const [reminderCurrentName, setReminderCurrentName] = useState('');
 
-  // 設定のロード
+  // ログイン認証用の入力状態
+  const [loginCorpId, setLoginCorpId] = useState('');
+  const [loginUserId, setLoginUserId] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // 1. 初回マウント時に企業管理者リストをロード（初期ログイン状態は null / 未ログイン）
   useEffect(() => {
-    const storedCampaign = localStorage.getItem('stress_check_campaign');
+    const storedUsers = localStorage.getItem('stress_check_corporate_users');
+    let usersList: CorporateUser[] = [];
+    if (storedUsers) {
+      usersList = JSON.parse(storedUsers);
+      setCorporateUsers(usersList);
+    }
+  }, []);
+
+  // 企業管理者ログイン処理
+  const handleCorporateLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+
+    if (!loginCorpId.trim()) {
+      setLoginError('企業コードを入力してください。');
+      return;
+    }
+    if (!loginUserId.trim()) {
+      setLoginError('ユーザーIDを入力してください。');
+      return;
+    }
+
+    const corpCode = loginCorpId.trim().toUpperCase();
+    const uId = loginUserId.trim();
+
+    // 1. 企業存在チェック
+    const storedCorps = localStorage.getItem('stress_check_corporations');
+    const corps = storedCorps ? JSON.parse(storedCorps) : [];
+    const foundCorp = corps.find((c: any) => c.corporationId === corpCode);
+
+    if (!foundCorp) {
+      setLoginError('入力された企業コードが見つかりません。');
+      return;
+    }
+
+    if (foundCorp.status === 'suspended') {
+      setLoginError('この企業の契約は現在一時停止されています。システム管理者にお問い合わせください。');
+      return;
+    }
+
+    // 2. ユーザー存在チェック
+    const storedUsers = localStorage.getItem('stress_check_corporate_users');
+    const users = storedUsers ? JSON.parse(storedUsers) : [];
+    const foundUser = users.find((u: any) => u.corporationId === corpCode && u.userId === uId);
+
+    if (!foundUser) {
+      setLoginError('ユーザーIDが見つかりません。または所属企業が一致しません。');
+      return;
+    }
+
+    if (foundUser.status === 'inactive') {
+      setLoginError('このユーザーアカウントは現在無効化されています。');
+      return;
+    }
+
+    // ログイン成功
+    setActiveUser(foundUser);
+    onNotify(`${foundCorp.name}の${foundUser.name}様としてログインしました。`, 'success');
+  };
+
+  // デモ用かんたんログインバイパス
+  const handleDemoLogin = (corpCode: string, uId: string) => {
+    setLoginError('');
+    
+    const storedCorps = localStorage.getItem('stress_check_corporations');
+    const corps = storedCorps ? JSON.parse(storedCorps) : [];
+    const foundCorp = corps.find((c: any) => c.corporationId === corpCode);
+
+    const storedUsers = localStorage.getItem('stress_check_corporate_users');
+    const users = storedUsers ? JSON.parse(storedUsers) : [];
+    const foundUser = users.find((u: any) => u.corporationId === corpCode && u.userId === uId);
+
+    if (foundCorp && foundUser) {
+      setActiveUser(foundUser);
+      onNotify(`${foundCorp.name}の${foundUser.name}様としてログインしました（デモ）。`, 'success');
+    } else {
+      setLoginError('デモデータの初期化に問題があります。システム管理者ポータルで企業・管理者を登録してください。');
+    }
+  };
+
+  // ログアウト処理
+  const handleCorporateLogout = () => {
+    setActiveUser(null);
+    setLoginCorpId('');
+    setLoginUserId('');
+    setLoginError('');
+    onNotify('ログアウトしました。', 'success');
+  };
+
+  // 2. アクティブユーザー（テナント）が切り替わったときに設定とデータをリロード
+  useEffect(() => {
+    if (!activeUser) return;
+    const corpId = activeUser.corporationId;
+
+    // A. 設定のロード
+    const storedCampaign = localStorage.getItem(`stress_check_campaign_${corpId}`);
     if (storedCampaign) {
       const camp: CampaignSettings = JSON.parse(storedCampaign);
       setCampaignName(camp.campaignName);
@@ -121,49 +227,78 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       setEndDate(camp.endDate);
       setCustomNoticeStart(camp.customNoticeStart);
       setCustomNoticeHighStress(camp.customNoticeHighStress);
+    } else {
+      setCampaignName('2026年度 春期定期ストレスチェック');
+      setStartDate('2026-05-25T10:00');
+      setEndDate('2026-06-08T18:00');
+      setCustomNoticeStart('厚生労働省の標準「職業性ストレス簡易調査票（57項目）」に準拠した、あなたのストレス状態を評価する診断です。');
+      setCustomNoticeHighStress('厚生労働省が定める高ストレス判定基準に基づき、ストレスの負荷が高い状態であると評価されました。ご自身の体調を第一に考え、必要に応じて管理者に相談の上、医師による面接指導をお申し込みいただくことをお勧めします。');
     }
     
-    const storedConsent = localStorage.getItem('stress_check_consent');
+    const storedConsent = localStorage.getItem(`stress_check_consent_${corpId}`);
     if (storedConsent) {
       const cons: ConsentSettings = JSON.parse(storedConsent);
       setUseConsent(cons.useConsent);
       setDiscloseLabel(cons.discloseLabel);
       setDiscloseNotice(cons.discloseNotice);
       setConsentTiming(cons.consentTiming);
+    } else {
+      setUseConsent(true);
+      setDiscloseLabel('事業者');
+      setDiscloseNotice('このストレスチェックは、個人情報保護方針に基づき実施されます。あなたの同意がある場合のみ、結果が事業者に共有されます。同意しないことで不利益な扱いを受けることは一切ありません。');
+      setConsentTiming('after');
     }
 
-    const storedInterview = localStorage.getItem('stress_check_interview');
+    const storedInterview = localStorage.getItem(`stress_check_interview_${corpId}`);
     if (storedInterview) {
       const intv: InterviewSettings = JSON.parse(storedInterview);
       setDisplayCondition(intv.displayCondition);
       setRequireDisclosure(intv.requireDisclosure);
       setReceptionDays(intv.receptionDays);
       setNotificationEmails(intv.notificationEmails);
+    } else {
+      setDisplayCondition('high_stress_only');
+      setRequireDisclosure('required');
+      setReceptionDays(30);
+      setNotificationEmails('admin@company.com');
     }
 
-    loadResultsAndEmployees();
-  }, []);
+    // B. テナント分離された従業員・結果データのフィルタリングロード
+    loadResultsAndEmployees(corpId);
+  }, [activeUser]);
 
-  const loadResultsAndEmployees = () => {
-    const storedResults = localStorage.getItem('stress_check_results');
-    if (storedResults) {
-      setResults(JSON.parse(storedResults));
-    }
+  const loadResultsAndEmployees = (corpId: string) => {
     const storedEmployees = localStorage.getItem('stress_check_employees');
     if (storedEmployees) {
-      setEmployees(JSON.parse(storedEmployees));
+      const allEmps: Employee[] = JSON.parse(storedEmployees);
+      const filteredEmps = allEmps.filter(e => e.corporationId === corpId);
+      setEmployees(filteredEmps);
+    } else {
+      setEmployees([]);
+    }
+
+    const storedResults = localStorage.getItem('stress_check_results');
+    if (storedResults) {
+      const allResults: ExamineeResult[] = JSON.parse(storedResults);
+      const filteredResults = allResults.filter(r => r.corporationId === corpId);
+      setResults(filteredResults);
+    } else {
+      setResults([]);
     }
   };
 
   // タブ切り替え時にリフレッシュ
   useEffect(() => {
-    if (activeTab === 'results') {
-      loadResultsAndEmployees();
+    if (activeTab === 'results' && activeUser) {
+      loadResultsAndEmployees(activeUser.corporationId);
     }
-  }, [activeTab]);
+  }, [activeTab, activeUser]);
 
   // 設定の保存
   const handleSaveSettings = () => {
+    if (!activeUser) return;
+    const corpId = activeUser.corporationId;
+
     if (!campaignName.trim()) {
       onNotify('実施キャンペーン名を入力してください。', 'error');
       return;
@@ -189,7 +324,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       customNoticeHighStress: customNoticeHighStress.trim(),
       status: 'active'
     };
-    localStorage.setItem('stress_check_campaign', JSON.stringify(campaign));
+    localStorage.setItem(`stress_check_campaign_${corpId}`, JSON.stringify(campaign));
 
     const consent: ConsentSettings = {
       useConsent,
@@ -197,7 +332,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       discloseNotice: discloseNotice.trim(),
       consentTiming
     };
-    localStorage.setItem('stress_check_consent', JSON.stringify(consent));
+    localStorage.setItem(`stress_check_consent_${corpId}`, JSON.stringify(consent));
 
     const interview: InterviewSettings = {
       displayCondition,
@@ -205,7 +340,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       receptionDays,
       notificationEmails: notificationEmails.trim()
     };
-    localStorage.setItem('stress_check_interview', JSON.stringify(interview));
+    localStorage.setItem(`stress_check_interview_${corpId}`, JSON.stringify(interview));
 
     onNotify('設定がLocalStorageに保存され、キャンペーンが有効化されました！', 'success');
     setAdminStep(1); 
@@ -372,6 +507,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       onNotify('エラーが表示されているセルをすべて修正してください。', 'error');
       return;
     }
+    if (!activeUser) return;
+    const currentCorpId = activeUser.corporationId;
 
     const storedEmployees = localStorage.getItem('stress_check_employees');
     const existingEmployees: Employee[] = storedEmployees ? JSON.parse(storedEmployees) : [];
@@ -382,8 +519,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     const updatedList = [...existingEmployees];
 
     parsedItems.forEach(item => {
-      const idx = updatedList.findIndex(e => e.employeeCode === item.data.employeeCode);
+      const idx = updatedList.findIndex(e => e.corporationId === currentCorpId && e.employeeCode === item.data.employeeCode);
       const newEmp: Employee = {
+        corporationId: currentCorpId,
         employeeCode: item.data.employeeCode,
         name: item.data.name,
         nameKana: item.data.nameKana,
@@ -407,7 +545,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
 
     localStorage.setItem('stress_check_employees', JSON.stringify(updatedList));
     setParsedItems([]); // クリア
-    setEmployees(updatedList);
+    
+    // 自社の従業員のみをフィルタリングして状態にセット
+    const filteredEmps = updatedList.filter(e => e.corporationId === currentCorpId);
+    setEmployees(filteredEmps);
     onNotify(`インポート成功：${addedCount}名を追加、${updatedCount}名を更新しました。`, 'success');
   };
 
@@ -629,31 +770,181 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     );
   });
 
+  if (activeUser === null) {
+    return (
+      <div className="admin-login-container fade-in" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', minHeight: '60vh', padding: '1rem' }}>
+        <div className="card login-card" style={{ maxWidth: '480px', padding: '2.5rem', background: 'var(--card-bg)', border: '1px solid rgba(255, 255, 255, 0.4)' }}>
+          <div className="text-center mb-6">
+            <div className="logo-badge mb-3" style={{ background: '#eff6ff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', borderRadius: '50%' }}>
+              <Building2 size={32} className="text-primary" style={{ color: 'var(--primary)' }} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)' }}>企業管理者ログイン</h2>
+            <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>ストレスチェック制度 管理者専用ポータル</p>
+          </div>
+
+          {loginError && (
+            <div className="alert-badge error mb-4" style={{ borderRadius: '8px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <AlertCircle size={16} />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleCorporateLogin}>
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Building2 size={14} className="text-muted" />
+                企業コード
+              </label>
+              <input 
+                type="text" 
+                className="form-control" 
+                value={loginCorpId}
+                onChange={(e) => setLoginCorpId(e.target.value)}
+                placeholder="例: CORP001"
+                style={{ textTransform: 'uppercase' }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Lock size={14} className="text-muted" />
+                ユーザーID
+              </label>
+              <input 
+                type="password" 
+                className="form-control" 
+                value={loginUserId}
+                onChange={(e) => setLoginUserId(e.target.value)}
+                placeholder="例: USER001"
+              />
+            </div>
+
+            <button type="submit" className="btn btn-primary w-full mt-2" style={{ padding: '0.85rem', borderRadius: '8px' }}>
+              安全なログイン
+            </button>
+          </form>
+
+          <div className="divider-text" style={{ margin: '1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+            <span style={{ height: '1px', background: '#cbd5e1', flex: 1 }}></span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>またはデモアカウントで検証</span>
+            <span style={{ height: '1px', background: '#cbd5e1', flex: 1 }}></span>
+          </div>
+
+          <div className="demo-login-box" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <button 
+              type="button" 
+              onClick={() => handleDemoLogin('CORP001', 'USER001')} 
+              className="btn btn-outline w-full demo-login-btn"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#f0f9ff' }}
+            >
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e40af' }}>佐藤HR管理者としてログイン</span>
+              <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 500 }}>テクノロジーラボ (CORP001) / 10名受検完了</span>
+            </button>
+
+            <button 
+              type="button" 
+              onClick={() => handleDemoLogin('CORP002', 'USER002')} 
+              className="btn btn-outline w-full demo-login-btn"
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.75rem', borderRadius: '8px', border: '1px solid #fed7aa', background: '#fff7ed' }}
+            >
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#c2410c' }}>鈴木営業管理者としてログイン</span>
+              <span style={{ fontSize: '0.7rem', color: '#fb923c', fontWeight: 500 }}>グローバル営業本部 (CORP002) / 3名受検完了</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="admin-portal-container fade-in">
+      {/* 開発・デモ検証用コンテキストスイッチャー */}
+      <details className="dev-tool-accordion mb-6" style={{ width: '100%' }}>
+        <summary className="dev-tool-summary cursor-pointer p-3 rounded-lg border flex items-center justify-between text-xs font-bold text-gray-500" style={{ background: '#f8fafc', borderColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', listStyle: 'none' }}>
+          <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>🔧</span>
+            <span>【デモ・動作検証用】テナント擬似切り替えツール</span>
+          </div>
+          <span className="toggle-indicator text-xs font-normal" style={{ color: 'var(--primary)' }}>(クリックして展開)</span>
+        </summary>
+        
+        <div className="tenant-context-bar flex items-center justify-between p-4 mt-2 rounded-xl border transition-all duration-300" style={{ background: 'var(--glass-bg)', borderColor: '#cbd5e1', display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+          <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="p-2 rounded-lg text-primary" style={{ background: '#eff6ff', padding: '8px' }}>
+              <Building2 size={24} className="text-primary" />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">現在選択中の企業</div>
+              <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {activeUser ? activeUser.name : '未選択'}
+                <span className="text-xs text-gray-500 font-normal bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700">
+                  {activeUser ? activeUser.corporationId : ''}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label className="text-xs font-bold text-gray-500 dark:text-gray-400">管理者コンテキスト:</label>
+            <select
+              value={activeUser ? activeUser.userId : ''}
+              onChange={(e) => {
+                const selected = corporateUsers.find(u => u.userId === e.target.value);
+                if (selected) {
+                  setActiveUser(selected);
+                  onNotify(`管理者コンテキストを「${selected.name}」に切り替えました。`, 'success');
+                }
+              }}
+              className="py-1.5 px-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            >
+              {corporateUsers.map(user => (
+                <option key={user.userId} value={user.userId}>
+                  {user.name} ({user.corporationId} - {user.role === 'admin' ? '実施管理者' : '共同閲覧者'})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </details>
+
       {/* 管理者用インナータブナビゲーション */}
-      <div className="admin-tabs mb-6">
+      <div className="admin-tabs mb-6 flex justify-between items-center" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', borderBottom: '2px solid #e2e8f0' }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button 
+            className={`tab-btn ${activeTab === 'wizard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('wizard')}
+            style={{ borderBottom: activeTab === 'wizard' ? '2px solid var(--primary)' : '2px solid transparent' }}
+          >
+            <Settings size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+            実施セットアップ
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'results' ? 'active' : ''}`}
+            onClick={() => setActiveTab('results')}
+            style={{ borderBottom: activeTab === 'results' ? '2px solid var(--primary)' : '2px solid transparent' }}
+          >
+            <ClipboardList size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+            受検結果トラッキング
+            {results.length > 0 && <span className="tab-badge">{results.length}</span>}
+          </button>
+          <button 
+            className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
+            onClick={() => setActiveTab('employees')}
+            style={{ borderBottom: activeTab === 'employees' ? '2px solid var(--primary)' : '2px solid transparent' }}
+          >
+            <Users size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+            従業員マスタ管理
+          </button>
+        </div>
+
+        {/* ログアウトボタン */}
         <button 
-          className={`tab-btn ${activeTab === 'wizard' ? 'active' : ''}`}
-          onClick={() => setActiveTab('wizard')}
+          onClick={handleCorporateLogout}
+          className="btn btn-outline"
+          style={{ padding: '0.45rem 1rem', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
-          <Settings size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-          実施セットアップ
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'results' ? 'active' : ''}`}
-          onClick={() => setActiveTab('results')}
-        >
-          <ClipboardList size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-          受検結果トラッキング
-          {results.length > 0 && <span className="tab-badge">{results.length}</span>}
-        </button>
-        <button 
-          className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
-          onClick={() => setActiveTab('employees')}
-        >
-          <Users size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-          従業員マスタ管理
+          <Lock size={14} />
+          ログアウト
         </button>
       </div>
 
@@ -1180,7 +1471,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </button>
             <button 
               className={`btn btn-outline ${resultsSubTab === 'dashboard' ? 'btn-primary text-white' : ''}`}
-              onClick={() => { setResultsSubTab('dashboard'); loadResultsAndEmployees(); }}
+              onClick={() => { setResultsSubTab('dashboard'); loadResultsAndEmployees(activeUser ? activeUser.corporationId : 'CORP001'); }}
               style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '4px' }}
             >
               組織分析ダッシュボード
@@ -1434,7 +1725,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           ========================================== */}
       {activeTab === 'employees' && (
         <div className="card" style={{ maxWidth: '800px' }}>
-          <EmployeeManager onNotify={onNotify} />
+          <EmployeeManager onNotify={onNotify} activeCorpId={activeUser ? activeUser.corporationId : 'CORP001'} />
         </div>
       )}
 
