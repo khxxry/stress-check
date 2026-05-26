@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CorporateUser, CampaignSettings, ConsentSettings, InterviewSettings, ExamineeResult, Employee } from '../types';
 import { EmployeeManager } from './EmployeeManager';
 import { Radar, Bar } from 'react-chartjs-2';
@@ -16,7 +16,7 @@ import {
   ArcElement,
   Title
 } from 'chart.js';
-import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, Upload, AlertCircle, RefreshCw, Mail, Download, BarChart2, Building2 } from 'lucide-react';
+import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, AlertCircle, RefreshCw, Mail, Download, BarChart2, Building2, PlusCircle } from 'lucide-react';
 
 ChartJS.register(
   RadialLinearScale,
@@ -53,21 +53,6 @@ interface CampaignHistoryItem {
   status: 'preparing' | 'active' | 'finished';
 }
 
-interface CSVRow {
-  employeeCode: string;
-  name: string;
-  nameKana: string;
-  gender: 'male' | 'female';
-  email: string;
-  birthDate: string;
-  department: string;
-}
-
-interface ParsedCSVItem {
-  id: number;
-  data: CSVRow;
-  errors: Record<string, string>;
-}
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [activeTab, setActiveTab] = useState<'wizard' | 'results' | 'employees'>('wizard');
@@ -107,6 +92,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [receptionDays, setReceptionDays] = useState(30);
   const [notificationEmails, setNotificationEmails] = useState('admin@company.com');
 
+  // 実施セットアップウィザードモードの制御
+  const [isWizardMode, setIsWizardMode] = useState<boolean>(false);
+
   // ==========================================
   // 2. 受検結果一覧状態
   // ==========================================
@@ -124,13 +112,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [selectedResult, setSelectedResult] = useState<ExamineeResult | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-  // ==========================================
-  // 3. スマートCSVインポート状態
-  // ==========================================
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [parsedItems, setParsedItems] = useState<ParsedCSVItem[]>([]);
-  const [hasImportErrors, setHasImportErrors] = useState(false);
-  const [duplicateOption, setDuplicateOption] = useState<'overwrite' | 'skip'>('overwrite');
+
 
   // ==========================================
   // 4. 組織分析ダッシュボード状態
@@ -520,213 +502,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     }
 
     onNotify('設定がLocalStorageに保存され、キャンペーンが有効化されました！', 'success');
+    setSelectedCampaignName(campaignName.trim()); // 新規作成されたキャンペーンを自動選択する
     setAdminStep(1); 
-  };
-
-  // ==========================================
-  // スマートCSVインポート機能
-  // ==========================================
-
-  // ドラッグオーバーハンドラ
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
-  // ファイルドロップハンドラ
-  const handleFileDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      processCSVFile(files[0]);
-    }
-  };
-
-  // ファイル選択ハンドラ
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      processCSVFile(files[0]);
-    }
-  };
-
-  // CSVファイルのパースとバリデーション
-  const processCSVFile = (file: File) => {
-    if (!file.name.endsWith('.csv')) {
-      onNotify('CSV形式のファイルのみアップロード可能です。', 'error');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      parseCSVContent(text);
-    };
-    reader.readAsText(file, 'UTF-8');
-  };
-
-  // テキストパース
-  const parseCSVContent = (content: string) => {
-    const lines = content.split(/\r?\n/);
-    const parsed: ParsedCSVItem[] = [];
-    let idCounter = 1;
-
-    // ヘッダー行をスキップしてループ
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue; // 空行スキップ
-
-      // 簡易カンマ分割 (ダブルクォーテーションをトリム)
-      const cols = line.split(',').map(c => c.replace(/^["']|["']$/g, '').trim());
-
-      // 列不足の場合は埋める
-      const employeeCode = cols[0] || '';
-      const name = cols[1] || '';
-      const nameKana = cols[2] || '';
-      const rawGender = cols[3] || 'male';
-      const email = cols[4] || '';
-      const birthDate = cols[5] || '';
-      const department = cols[6] || '一般';
-
-      // 性別の自動マッピング
-      let gender: 'male' | 'female' = 'male';
-      if (rawGender === 'female' || rawGender === '女性' || rawGender === '女' || rawGender === 'f') {
-        gender = 'female';
-      }
-
-      const rowData: CSVRow = {
-        employeeCode,
-        name,
-        nameKana,
-        gender,
-        email,
-        birthDate,
-        department
-      };
-
-      // バリデーション実行
-      const errors = validateRow(rowData, parsed.map(p => p.data.employeeCode));
-
-      parsed.push({
-        id: idCounter++,
-        data: rowData,
-        errors
-      });
-    }
-
-    setParsedItems(parsed);
-    checkErrorsExist(parsed);
-    onNotify(`${parsed.length} 行のCSVデータを読み込みました。`, 'success');
-  };
-
-  // 単一行バリデーション
-  const validateRow = (row: CSVRow, previousCodes: string[]): Record<string, string> => {
-    const errs: Record<string, string> = {};
-
-    if (!row.employeeCode) {
-      errs.employeeCode = '社員番号は必須です';
-    } else if (previousCodes.includes(row.employeeCode)) {
-      errs.employeeCode = 'ファイル内で社員番号が重複しています';
-    }
-
-    if (!row.name) {
-      errs.name = '名前は必須です';
-    }
-
-    if (!row.email) {
-      errs.email = 'メールアドレスは必須です';
-    } else if (!row.email.includes('@')) {
-      errs.email = '@を含む有効な形式にしてください';
-    }
-
-    if (!row.birthDate) {
-      errs.birthDate = '生年月日は必須です';
-    } else if (isNaN(Date.parse(row.birthDate))) {
-      errs.birthDate = '日付形式(YYYY-MM-DD)にしてください';
-    }
-
-    return errs;
-  };
-
-  // エラーの有無を検査
-  const checkErrorsExist = (items: ParsedCSVItem[]) => {
-    const hasError = items.some(item => Object.keys(item.errors).length > 0);
-    setHasImportErrors(hasError);
-  };
-
-  // エディタセル直接編集ロジック
-  const handleCellEdit = (itemId: number, field: keyof CSVRow, value: string) => {
-    const updated = parsedItems.map(item => {
-      if (item.id === itemId) {
-        const newData = { ...item.data, [field]: value };
-        
-        // 再バリデーション用に、他の行の社員番号リストを取得
-        const otherCodes = parsedItems
-          .filter(p => p.id !== itemId)
-          .map(p => p.data.employeeCode);
-
-        const newErrors = validateRow(newData, otherCodes);
-        return {
-          ...item,
-          data: newData,
-          errors: newErrors
-        };
-      }
-      return item;
-    });
-
-    setParsedItems(updated);
-    checkErrorsExist(updated);
-  };
-
-  // インポート確定処理
-  const handleConfirmImport = () => {
-    if (hasImportErrors) {
-      onNotify('エラーが表示されているセルをすべて修正してください。', 'error');
-      return;
-    }
-    if (!activeUser) return;
-    const currentCorpId = activeUser.corporationId;
-
-    const storedEmployees = localStorage.getItem('stress_check_employees');
-    const existingEmployees: Employee[] = storedEmployees ? JSON.parse(storedEmployees) : [];
-    
-    let addedCount = 0;
-    let updatedCount = 0;
-
-    const updatedList = [...existingEmployees];
-
-    parsedItems.forEach(item => {
-      const idx = updatedList.findIndex(e => e.corporationId === currentCorpId && e.employeeCode === item.data.employeeCode);
-      const newEmp: Employee = {
-        corporationId: currentCorpId,
-        employeeCode: item.data.employeeCode,
-        name: item.data.name,
-        nameKana: item.data.nameKana,
-        gender: item.data.gender,
-        email: item.data.email,
-        birthDate: item.data.birthDate,
-        status: 'active',
-        department: item.data.department
-      };
-
-      if (idx !== -1) {
-        if (duplicateOption === 'overwrite') {
-          updatedList[idx] = newEmp;
-          updatedCount++;
-        }
-      } else {
-        updatedList.push(newEmp);
-        addedCount++;
-      }
-    });
-
-    localStorage.setItem('stress_check_employees', JSON.stringify(updatedList));
-    setParsedItems([]); // クリア
-    
-    // 自社の従業員のみをフィルタリングして状態にセット
-    const filteredEmps = updatedList.filter(e => e.corporationId === currentCorpId);
-    setEmployees(filteredEmps);
-    onNotify(`インポート成功：${addedCount}名を追加、${updatedCount}名を更新しました。`, 'success');
+    setIsWizardMode(false); // ウィザードモードを終了する
   };
 
   // ==========================================
@@ -1228,11 +1006,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button 
             className={`tab-btn ${activeTab === 'wizard' ? 'active' : ''}`}
-            onClick={() => setActiveTab('wizard')}
+            onClick={() => { setActiveTab('wizard'); setIsWizardMode(false); }}
             style={{ borderBottom: activeTab === 'wizard' ? '2px solid var(--primary)' : '2px solid transparent' }}
           >
             <Settings size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-            実施セットアップ
+            実施管理設定
           </button>
           <button 
             className={`tab-btn ${activeTab === 'results' ? 'active' : ''}`}
@@ -1265,16 +1043,215 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       </div>
 
       {/* ==========================================
-          タブ1: 実施セットアップ (Wizard)
+          タブ1: 実施管理設定 (Dashboard - 履歴＆現在設定の一覧)
           ========================================== */}
-      {activeTab === 'wizard' && (
-        <div className="card admin-placeholder fade-in" style={{ maxWidth: '700px' }}>
-          <div className="admin-header flex justify-between items-center">
+      {activeTab === 'wizard' && !isWizardMode && (
+        <div className="card fade-in" style={{ maxWidth: '1000px' }}>
+          <div className="admin-header mb-6 flex justify-between items-center flex-wrap gap-4" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
             <div>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>ストレスチェック 実施管理設定</h2>
-              <p className="text-muted" style={{ fontSize: '0.85rem' }}>キャンペーン期間、同意文書、医師面接連携を詳細に構成します。</p>
+              <p className="text-muted" style={{ fontSize: '0.85rem' }}>現在実施中のストレスチェック設定の確認、および過去のキャンペーン履歴を管理します。</p>
             </div>
-            <span className="badge-admin">セットアップ</span>
+            
+            <button 
+              onClick={() => {
+                // 新規キャンペーン用にフォームを初期化
+                setCampaignName('');
+                setAdminStep(1);
+                setIsWizardMode(true);
+              }}
+              className="btn btn-primary"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '0.6rem 1.2rem',
+                fontSize: '0.88rem',
+                borderRadius: '8px',
+                fontWeight: 700,
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <PlusCircle size={18} />
+              新しいストレスチェックを新規開始
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1.5rem' }}>
+            
+            {/* 左側: 現在実施中のストレスチェック設定 */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  🟢 現在アクティブな実施設定
+                </h3>
+                <span style={{ background: 'rgba(22, 163, 74, 0.1)', color: '#16a34a', fontWeight: 700, fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px' }}>
+                  実施中
+                </span>
+              </div>
+
+              {campaignHistory.find(c => c.status === 'active') ? (() => {
+                const activeCamp = campaignHistory.find(c => c.status === 'active')!;
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>キャンペーン名</span>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1e293b' }}>{activeCamp.campaignName}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>実施期間</span>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e3a8a' }}>
+                        ⏰ {activeCamp.startDate.replace('T', ' ')} 〜 {activeCamp.endDate.replace('T', ' ')}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '4px' }}>
+                      <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>開示同意フォーム</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginTop: '2px' }}>
+                          {activeCamp.useConsent ? `使用 (${activeCamp.discloseLabel})` : '不使用'}
+                        </div>
+                      </div>
+                      <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>医師面接受付</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginTop: '2px' }}>
+                          {activeCamp.displayCondition === 'high_stress_only' ? '高ストレス者のみ' : activeCamp.displayCondition === 'all' ? '全員' : activeCamp.displayCondition === 'recommended_only' ? '面接勧奨のみ' : '不使用'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                      <button 
+                        onClick={() => {
+                          // 現在の設定値をウィザードのステートに入れてウィザードモードを起動する（編集）
+                          setCampaignName(activeCamp.campaignName);
+                          setStartDate(activeCamp.startDate);
+                          setEndDate(activeCamp.endDate);
+                          setUseConsent(activeCamp.useConsent || false);
+                          setDiscloseLabel(activeCamp.discloseLabel || '事業者');
+                          setDiscloseNotice(activeCamp.discloseNotice || '');
+                          setConsentTiming(activeCamp.consentTiming || 'after');
+                          setDisplayCondition(activeCamp.displayCondition || 'high_stress_only');
+                          setRequireDisclosure(activeCamp.requireDisclosure || 'required');
+                          setReceptionDays(activeCamp.receptionDays || 30);
+                          setNotificationEmails(activeCamp.notificationEmails || '');
+                          
+                          setAdminStep(1);
+                          setIsWizardMode(true);
+                        }}
+                        className="btn btn-outline"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', width: '100%', justifyContent: 'center' }}
+                      >
+                        🔧 現在の設定を編集・更新する
+                      </button>
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748b', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                  <span>📭 現在有効化されている実施設定はありません。</span>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>右上のボタンから新しいキャンペーンを開始してください。</span>
+                </div>
+              )}
+            </div>
+
+            {/* 右側: 過去のストレスチェック実施履歴 */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)' }}>
+              <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '8px' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  📅 ストレスチェック実施履歴
+                </h3>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '320px', overflowY: 'auto', paddingRight: '4px' }}>
+                {campaignHistory.length > 0 ? campaignHistory.map((item) => (
+                  <div 
+                    key={item.campaignName}
+                    style={{ 
+                      padding: '10px 12px', 
+                      borderRadius: '8px', 
+                      border: '1px solid #e2e8f0', 
+                      background: '#f8fafc',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.campaignName}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        📅 {item.startDate.replace('T', ' ')} 〜 {item.endDate.replace('T', ' ')}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        fontWeight: 700, 
+                        padding: '2px 6px', 
+                        borderRadius: '4px',
+                        background: item.status === 'active' ? 'rgba(22, 163, 74, 0.1)' : 'rgba(100, 116, 139, 0.1)',
+                        color: item.status === 'active' ? '#16a34a' : '#64748b'
+                      }}>
+                        {item.status === 'active' ? '実施中' : '終了'}
+                      </span>
+                      <button 
+                        onClick={() => {
+                          setSelectedCampaignName(item.campaignName);
+                          setActiveTab('results');
+                          setResultsSubTab('list');
+                          onNotify(`「${item.campaignName}」の受検結果データを表示します。`, 'success');
+                        }}
+                        className="btn btn-outline"
+                        style={{ padding: '4px 8px', fontSize: '0.75rem', background: 'white' }}
+                      >
+                        データ ➔
+                      </button>
+                    </div>
+                  </div>
+                )) : (
+                  <div style={{ textAlign: 'center', padding: '2rem 0', color: '#94a3b8', fontSize: '0.8rem' }}>
+                    履歴データがありません。
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          タブ1の別モード: 実施セットアップ (Wizard形式で新規作成または編集)
+          ========================================== */}
+      {activeTab === 'wizard' && isWizardMode && (
+        <div className="card admin-placeholder fade-in" style={{ maxWidth: '700px' }}>
+          <div className="admin-header flex justify-between items-center" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>実施セットアップウィザード</h2>
+              <p className="text-muted" style={{ fontSize: '0.85rem' }}>新しくストレスチェックキャンペーンを作成し、各種フローを設計します。</p>
+            </div>
+            <button 
+              onClick={() => setIsWizardMode(false)}
+              className="btn btn-outline"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                fontSize: '0.75rem',
+                borderRadius: '6px',
+                fontWeight: 700
+              }}
+            >
+              ◀ キャンセルして戻る
+            </button>
           </div>
 
           <div className="wizard-steps mb-6">
@@ -1356,206 +1333,75 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
               </div>
             )}
 
-            {/* ステップ2: 対象者インポート (完全スマートインポート) */}
+            {/* ステップ2: 対象者インポート */}
             {adminStep === 2 && (
               <div className="admin-card fade-in">
-                <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ2: 対象従業員マスタ登録（CSVスマートインポート）</h3>
+                <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ2: 受検対象者（CSVインポート / 個別追加）</h3>
                 
-                <div className="flex gap-4 justify-between mb-4 flex-wrap" style={{ fontSize: '0.88rem' }}>
-                  <div>👥 有効な登録従業員数: <strong>{totalEmployees} 名</strong></div>
-                  <div>
-                    重複時の処理: 
-                    <select 
-                      value={duplicateOption} 
-                      onChange={(e) => setDuplicateOption(e.target.value as any)}
-                      style={{ marginLeft: '6px', padding: '2px 8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                    >
-                      <option value="overwrite">既存データに上書きする</option>
-                      <option value="skip">重複データはスキップする</option>
-                    </select>
-                  </div>
+                {/* 従業員マスタマネージャを再利用 */}
+                <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem' }}>
+                  <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.5rem' }}>👥 現在登録されている受検対象者</h4>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>
+                    ※ ストレスチェックを実施する前に、受検対象の全従業員をあらかじめ登録しておく必要があります。<br/>
+                    ※ すでにマスタ登録が完了している場合は、そのまま次のステップへ進んでください。
+                  </p>
                 </div>
 
-                {/* CSVアップロードエリア */}
-                <div 
-                  className="csv-dropzone text-center mb-6" 
-                  onDragOver={handleDragOver}
-                  onDrop={handleFileDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload size={32} className="text-primary mb-2" style={{ display: 'inline-block' }} />
-                  <p style={{ fontWeight: 700 }}>受検対象者CSVファイルをドラッグ＆ドロップ</p>
-                  <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>または、ここをクリックしてファイルを選択</p>
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleFileSelect} 
-                    style={{ display: 'none' }} 
-                    accept=".csv" 
-                  />
-                </div>
-
-                <div className="feature-info mb-4" style={{ fontSize: '0.75rem', padding: '10px' }}>
-                  📝 <strong>CSV推奨形式:</strong> 社員番号, 氏名, カナ, 性別(男性/女性), メールアドレス, 生年月日(YYYY-MM-DD), 部署
-                </div>
-
-                {/* スマートグリッドエディタ (エラー検出時) */}
-                {parsedItems.length > 0 && (
-                  <div className="smart-grid-editor-wrapper fade-in" style={{ border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden' }}>
-                    <div className="editor-header flex justify-between items-center py-2 px-4" style={{ background: hasImportErrors ? '#fef2f2' : '#f0fdf4', borderBottom: '1px solid #cbd5e1' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.85rem', color: hasImportErrors ? '#991b1b' : '#15803d' }}>
-                        {hasImportErrors 
-                          ? `⚠️ ${parsedItems.filter(p => Object.keys(p.errors).length > 0).length}行にエラーがあります。赤く表示されたセルをダブルクリックして修正してください。`
-                          : '✨ すべてのデータの検証が完了しました！エラーはありません。'}
-                      </span>
-                      {hasImportErrors && <span style={{ fontSize: '0.75rem', color: '#991b1b' }}>※Enterで確定、Escでキャンセル</span>}
-                    </div>
-
-                    <div style={{ maxHeight: '200px', overflow: 'auto' }}>
-                      <table className="editor-table" style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
-                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
-                            <th style={{ padding: '6px 12px' }}>社員番号</th>
-                            <th style={{ padding: '6px 12px' }}>氏名</th>
-                            <th style={{ padding: '6px 12px' }}>メールアドレス</th>
-                            <th style={{ padding: '6px 12px' }}>生年月日</th>
-                            <th style={{ padding: '6px 12px' }}>部署</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {parsedItems.map(item => (
-                            <tr key={item.id} style={{ borderBottom: '1px solid #cbd5e1' }}>
-                              {/* 社員番号 */}
-                              <td 
-                                className={`editable-cell ${item.errors.employeeCode ? 'cell-error' : ''}`}
-                                style={{ padding: '4px 10px' }}
-                                title={item.errors.employeeCode}
-                              >
-                                <input
-                                  type="text"
-                                  value={item.data.employeeCode}
-                                  onChange={(e) => handleCellEdit(item.id, 'employeeCode', e.target.value)}
-                                  className="grid-input"
-                                />
-                              </td>
-                              {/* 氏名 */}
-                              <td 
-                                className={`editable-cell ${item.errors.name ? 'cell-error' : ''}`}
-                                style={{ padding: '4px 10px' }}
-                                title={item.errors.name}
-                              >
-                                <input
-                                  type="text"
-                                  value={item.data.name}
-                                  onChange={(e) => handleCellEdit(item.id, 'name', e.target.value)}
-                                  className="grid-input"
-                                />
-                              </td>
-                              {/* メールアドレス */}
-                              <td 
-                                className={`editable-cell ${item.errors.email ? 'cell-error' : ''}`}
-                                style={{ padding: '4px 10px' }}
-                                title={item.errors.email}
-                              >
-                                <input
-                                  type="email"
-                                  value={item.data.email}
-                                  onChange={(e) => handleCellEdit(item.id, 'email', e.target.value)}
-                                  className="grid-input"
-                                />
-                              </td>
-                              {/* 生年月日 */}
-                              <td 
-                                className={`editable-cell ${item.errors.birthDate ? 'cell-error' : ''}`}
-                                style={{ padding: '4px 10px' }}
-                                title={item.errors.birthDate}
-                              >
-                                <input
-                                  type="text"
-                                  value={item.data.birthDate}
-                                  onChange={(e) => handleCellEdit(item.id, 'birthDate', e.target.value)}
-                                  className="grid-input"
-                                />
-                              </td>
-                              {/* 部署 */}
-                              <td style={{ padding: '4px 10px' }}>
-                                <input
-                                  type="text"
-                                  value={item.data.department}
-                                  onChange={(e) => handleCellEdit(item.id, 'department', e.target.value)}
-                                  className="grid-input"
-                                />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="py-2 px-4 text-right" style={{ background: '#f8fafc', borderTop: '1px solid #cbd5e1' }}>
-                      <button 
-                        className="btn btn-primary" 
-                        disabled={hasImportErrors}
-                        onClick={handleConfirmImport}
-                        style={{ padding: '0.4rem 1rem', fontSize: '0.8rem' }}
-                      >
-                        {parsedItems.length} 名のデータをインポート確定
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <EmployeeManager activeCorpId={activeUser ? activeUser.corporationId : 'CORP001'} onNotify={onNotify} />
               </div>
             )}
 
-            {/* ステップ3: 同意設定 */}
             {adminStep === 3 && (
               <div className="admin-card fade-in">
-                <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ3: 事業者への結果開示・同意フォーム構成</h3>
+                <h3 className="mb-4 text-primary" style={{ fontSize: '1.1rem', fontWeight: 700 }}>ステップ3: 結果開示同意フォーム設定</h3>
                 
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={useConsent} 
-                      onChange={(e) => setUseConsent(e.target.checked)}
-                      style={{ width: '18px', height: '18px', marginRight: '8px' }} 
-                    />
-                    結果開示同意フォームを収集する
+                <div className="form-group mb-4" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    id="useConsent"
+                    checked={useConsent}
+                    onChange={(e) => setUseConsent(e.target.checked)}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="useConsent" style={{ fontWeight: 700, cursor: 'pointer', userSelect: 'none', margin: 0 }}>
+                    結果開示同意フォームを有効化する (強く推奨)
                   </label>
                 </div>
 
                 {useConsent && (
-                  <div className="consent-sub-fields fade-in mt-4" style={{ background: 'rgba(30, 64, 175, 0.03)', border: '1px dashed rgba(30, 64, 175, 0.15)', borderRadius: '8px', padding: '1.25rem' }}>
+                  <div className="fade-in p-4 mb-4" style={{ background: 'rgba(30, 64, 175, 0.03)', border: '1px dashed rgba(30, 64, 175, 0.15)', borderRadius: '8px' }}>
                     <div className="form-group">
-                      <label className="form-label">「事業者」の呼称カスタマイズ (10文字以内)</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
+                      <label className="form-label">事業者の呼称 <span style={{ color: 'red' }}>*</span></label>
+                      <input
+                        type="text"
+                        className="form-control"
                         value={discloseLabel}
                         onChange={(e) => setDiscloseLabel(e.target.value)}
-                        maxLength={10}
+                        placeholder="例: 事業者、株式会社テクノロジーラボ"
                       />
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>※ 同意文書内で表示される「同意先」の名称です。</span>
                     </div>
 
                     <div className="form-group">
-                      <label className="form-label">開示に関する規約・説明文面 (400文字以内)</label>
-                      <textarea 
-                        className="form-control" 
-                        rows={3} 
+                      <label className="form-label">同意確認メッセージ本文</label>
+                      <textarea
+                        className="form-control"
+                        rows={4}
                         value={discloseNotice}
                         onChange={(e) => setDiscloseNotice(e.target.value)}
+                        placeholder="開示同意に関する説明や個人情報保護方針を入力してください。"
+                        style={{ fontSize: '0.85rem' }}
                       />
-                      <div className="text-right text-muted" style={{ fontSize: '0.75rem' }}>{discloseNotice.length}/400 文字</div>
                     </div>
 
                     <div className="form-group">
                       <label className="form-label">同意を求めるタイミング</label>
                       <div className="flex gap-4">
-                        <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', fontSize: '0.9rem' }}>
-                          <input 
-                            type="radio" 
-                            name="timing" 
-                            checked={consentTiming === 'before'} 
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+                          <input
+                            type="radio"
+                            name="consentTiming"
+                            checked={consentTiming === 'before'}
                             onChange={() => setConsentTiming('before')}
                             style={{ marginRight: '6px' }}
                           />
