@@ -27,6 +27,14 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
   const [loggedInEmployee, setLoggedInEmployee] = useState<Employee | null>(null);
   const [gender, setGender] = useState<Gender>('male');
 
+  // メールアドレスログイン & OTP状態
+  const [loginEmail, setLoginEmail] = useState('');
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [userEnteredOtp, setUserEnteredOtp] = useState('');
+  const [targetEmployeeForLogin, setTargetEmployeeForLogin] = useState<Employee | null>(null);
+  const [targetCorpForLogin, setTargetCorpForLogin] = useState<Corporation | null>(null);
+
   // 回答進捗
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -158,20 +166,20 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
   // 3. ビジネスロジック処理
   // ==========================================
 
-  // ログイン処理
-  const handleLogin = (e: React.FormEvent) => {
+  // ワンタイムパスコードの送信シミュレーション
+  const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!corporationId.trim()) {
       onNotify('企業コードを入力してください。', 'error');
       return;
     }
-    if (!employeeCode.trim()) {
-      onNotify('社員番号を入力してください。', 'error');
+    if (!loginEmail.trim()) {
+      onNotify('メールアドレスを入力してください。', 'error');
       return;
     }
 
     const corpCode = corporationId.trim().toUpperCase();
-    const empCode = employeeCode.trim();
+    const emailInput = loginEmail.trim().toLowerCase();
 
     // 1. 企業存在チェック
     const storedCorps = localStorage.getItem('stress_check_corporations');
@@ -184,35 +192,61 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
     }
 
     if (foundCorp.status === 'suspended') {
-      onNotify('この企業の契約は現在一時停止されています。システム管理者にお問い合わせください。', 'error');
+      onNotify('この企業の契約は現在一時停止されています。', 'error');
       return;
     }
 
-    // 2. 従業員存在チェック
+    // 2. 従業員存在チェック（メールアドレスで一致）
     const storedEmployees = localStorage.getItem('stress_check_employees');
     if (storedEmployees) {
       const emps: Employee[] = JSON.parse(storedEmployees);
-      const found = emps.find(emp => emp.corporationId === corpCode && emp.employeeCode === empCode);
+      const found = emps.find(emp => emp.corporationId === corpCode && emp.email.trim().toLowerCase() === emailInput);
       
       if (found) {
         if (found.status === 'inactive') {
-          onNotify('この社員番号は現在無効に設定されています。', 'error');
+          onNotify('この従業員アカウントは現在無効に設定されています。', 'error');
           return;
         }
 
-        // 3. テナント別の設定をロード
-        loadTenantSettings(corpCode);
-
-        setLoggedInEmployee(found);
-        setGender(found.gender);
-        setEmail(found.email);
-        setStep('start');
-        onNotify(`${foundCorp.name}の${found.name}様としてログインしました。`, 'success');
+        // 6桁のOTPコードを生成
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        setOtpCode(code);
+        setTargetEmployeeForLogin(found);
+        setTargetCorpForLogin(foundCorp);
+        setIsOtpSent(true);
+        setUserEnteredOtp('');
+        onNotify('ログイン用パスコードをシミュレーターに送信しました。', 'success');
       } else {
-        onNotify('登録されていない社員番号、または所属企業が一致しません。', 'error');
+        onNotify('登録されていないメールアドレス、または企業コードが一致しません。', 'error');
       }
     } else {
       onNotify('従業員マスタが登録されていません。', 'error');
+    }
+  };
+
+  // パスコード検証処理
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userEnteredOtp.trim()) {
+      onNotify('6桁の認証コードを入力してください。', 'error');
+      return;
+    }
+
+    if (userEnteredOtp.trim() === otpCode) {
+      if (!targetEmployeeForLogin || !targetCorpForLogin) return;
+
+      const corpCode = targetCorpForLogin.corporationId;
+      loadTenantSettings(corpCode);
+
+      setLoggedInEmployee(targetEmployeeForLogin);
+      setGender(targetEmployeeForLogin.gender);
+      setEmail(targetEmployeeForLogin.email); // 面接申請用のemailステートへ設定
+      setEmployeeCode(targetEmployeeForLogin.employeeCode); // 既存互換性のために社員番号も設定
+      
+      setStep('start');
+      onNotify(`${targetCorpForLogin.name}の${targetEmployeeForLogin.name}様としてログインしました。`, 'success');
+    } else {
+      onNotify('認証コードが正しくありません。シミュレーターに表示されているコードを入力してください。', 'error');
     }
   };
 
@@ -458,44 +492,121 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
 
   return (
     <div className="examinee-portal-wrapper w-full">
-      {/* 1. 社員番号ログイン画面 */}
+      {/* 1. 企業コード ＆ メールアドレス認証 (OTP) ログイン画面 */}
       {step === 'login' && (
         <div className="card fade-in" style={{ maxWidth: '500px' }}>
           <div className="text-center mb-6">
             <div className="logo-badge mb-3">
               <Activity size={32} className="text-primary" />
             </div>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>ストレスチェック ログイン</h2>
-            <p className="text-muted mt-1" style={{ fontSize: '0.85rem' }}>配布された社員番号を入力して、受検を開始してください。</p>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>受検ログイン (認証)</h2>
+            <p className="text-muted mt-1" style={{ fontSize: '0.85rem' }}>
+              企業コードと登録されているメールアドレスを入力してログインしてください。
+            </p>
           </div>
 
-          <form onSubmit={handleLogin}>
-            <div className="form-group" style={{ marginBottom: '1rem' }}>
-              <label className="form-label">企業コード (Corporate Code)</label>
-              <input
-                type="text"
-                className="form-control"
-                value={corporationId}
-                onChange={(e) => setCorporationId(e.target.value)}
-                placeholder="例: CORP001"
-                style={{ textAlign: 'center', letterSpacing: '2px', fontWeight: 700, textTransform: 'uppercase' }}
-              />
+          {!isOtpSent ? (
+            <form onSubmit={handleSendOtp}>
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label className="form-label">企業コード (Corporate Code)</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={corporationId}
+                  onChange={(e) => setCorporationId(e.target.value)}
+                  placeholder="例: CORP001"
+                  style={{ textAlign: 'center', letterSpacing: '2px', fontWeight: 700, textTransform: 'uppercase' }}
+                  required
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label">登録メールアドレス (Email Address)</label>
+                <div style={{ position: 'relative' }}>
+                  <Mail size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="email"
+                    className="form-control"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="yamada@company.com"
+                    style={{ paddingLeft: '36px' }}
+                    required
+                  />
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary w-full" style={{ padding: '0.9rem' }}>
+                認証コードを送信する <ArrowRight size={18} style={{ marginLeft: '6px', verticalAlign: 'middle' }} />
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp}>
+              <div className="alert-badge success mb-4" style={{ padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', lineHeight: '1.4', background: '#eff6ff', border: '1px solid #bfdbfe', color: 'var(--primary)' }}>
+                📧 <strong>{loginEmail}</strong> 宛に認証コードを送信しました。
+                <br />
+                ※デモ環境のため、下のシミュレーターからコードをコピーしてください。
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label">6桁の認証コード (Verification Code)</label>
+                <div style={{ position: 'relative' }}>
+                  <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <input
+                    type="text"
+                    maxLength={6}
+                    className="form-control"
+                    value={userEnteredOtp}
+                    onChange={(e) => setUserEnteredOtp(e.target.value)}
+                    placeholder="123456"
+                    style={{ paddingLeft: '36px', textAlign: 'center', letterSpacing: '8px', fontSize: '1.25rem', fontWeight: 700 }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button type="button" className="btn btn-outline" onClick={() => setIsOtpSent(false)} style={{ flex: 1, padding: '0.8rem' }}>
+                  <ArrowLeft size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} /> 戻る
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 2, padding: '0.8rem' }}>
+                  ログインする <ShieldCheck size={18} style={{ marginLeft: '6px', verticalAlign: 'middle' }} />
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* デモ環境用：OTP配信シミュレーター */}
+          {isOtpSent && otpCode && (
+            <div className="otp-simulator-box mt-6" style={{
+              background: 'linear-gradient(135deg, rgba(30, 64, 175, 0.05), rgba(79, 70, 229, 0.05))',
+              border: '1px dashed rgba(30, 64, 175, 0.3)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <Sparkles size={14} /> OTP送信シミュレーター (デモ用)
+              </div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                メールサーバーに接続せず、ローカルで生成された検証用パスコードです：
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <span style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '4px', background: 'white', padding: '4px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                  {otpCode}
+                </span>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(otpCode);
+                    onNotify('認証コードをコピーしました！', 'success');
+                  }} 
+                  className="btn btn-outline" 
+                  style={{ padding: '6px 12px', fontSize: '0.8rem', height: 'auto' }}
+                  type="button"
+                >
+                  コピー
+                </button>
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">社員番号 (Employee ID)</label>
-              <input
-                type="text"
-                className="form-control"
-                value={employeeCode}
-                onChange={(e) => setEmployeeCode(e.target.value)}
-                placeholder="例: EMP001"
-                style={{ textAlign: 'center', letterSpacing: '2px', fontWeight: 700 }}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary w-full" style={{ padding: '0.9rem' }}>
-              ログインする <ArrowRight size={18} style={{ marginLeft: '6px', verticalAlign: 'middle' }} />
-            </button>
-          </form>
+          )}
 
           {/* デモ・検証用バイパス */}
           <div className="divider-text my-4" style={{ textAlign: 'center', color: '#cbd5e1', fontSize: '0.75rem', position: 'relative' }}>
@@ -506,7 +617,7 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
             ゲスト（デモ・テスト用）として受検する
           </button>
           <div className="feature-info mt-4" style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            💡 <strong>テストガイド:</strong> テクノロジーラボは `CORP001` + `EMP001`、グローバル営業本部は `CORP002` + `EMP055` でログイン可能です。
+            💡 <strong>テストガイド:</strong> テクノロジーラボは `CORP001` + `yamada@company.com` (山田太郎)、グローバル営業本部は `CORP002` + `hayashi@company.com` (林直樹) で検証可能です。
           </div>
         </div>
       )}
