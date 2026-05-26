@@ -265,6 +265,12 @@ Error generating stack: `+i.message+`
         }
         .table-responsive {
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          width: 100%;
+        }
+        .admin-table {
+          min-width: 720px;
         }
         .admin-table th, .admin-table td {
           border-bottom: 1px solid #f1f5f9;
