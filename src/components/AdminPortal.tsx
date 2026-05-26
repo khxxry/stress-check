@@ -16,7 +16,7 @@ import {
   ArcElement,
   Title
 } from 'chart.js';
-import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, AlertCircle, RefreshCw, Mail, Download, BarChart2, Building2, PlusCircle } from 'lucide-react';
+import { Settings, ClipboardList, Users, ArrowLeft, ArrowRight, CheckCircle2, ShieldAlert, Search, X, Lock, Check, AlertCircle, RefreshCw, Mail, Download, BarChart2, Building2, PlusCircle, ShieldCheck, Sparkles } from 'lucide-react';
 
 ChartJS.register(
   RadialLinearScale,
@@ -130,7 +130,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
 
   // ログイン認証用の入力状態
   const [loginCorpId, setLoginCorpId] = useState('');
-  const [loginUserId, setLoginUserId] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [userEnteredOtp, setUserEnteredOtp] = useState('');
+  const [targetUserForLogin, setTargetUserForLogin] = useState<CorporateUser | null>(null);
+  const [targetCorpForLogin, setTargetCorpForLogin] = useState<any | null>(null);
   const [loginError, setLoginError] = useState('');
 
   // 1. 初回マウント時に企業管理者リストをロード（初期ログイン状態は null / 未ログイン）
@@ -143,8 +148,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     }
   }, []);
 
-  // 企業管理者ログイン処理
-  const handleCorporateLogin = (e: React.FormEvent) => {
+  // 企業管理者ログイン用 OTP送信処理
+  const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
@@ -152,13 +157,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       setLoginError('企業コードを入力してください。');
       return;
     }
-    if (!loginUserId.trim()) {
-      setLoginError('ユーザーIDを入力してください。');
+    if (!loginEmail.trim()) {
+      setLoginError('メールアドレスを入力してください。');
       return;
     }
 
     const corpCode = loginCorpId.trim().toUpperCase();
-    const uId = loginUserId.trim();
+    const emailInput = loginEmail.trim().toLowerCase();
 
     // 1. 企業存在チェック
     const storedCorps = localStorage.getItem('stress_check_corporations');
@@ -175,13 +180,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       return;
     }
 
-    // 2. ユーザー存在チェック
+    // 2. ユーザー存在チェック (メールアドレスで照合)
     const storedUsers = localStorage.getItem('stress_check_corporate_users');
     const users = storedUsers ? JSON.parse(storedUsers) : [];
-    const foundUser = users.find((u: any) => u.corporationId === corpCode && u.userId === uId);
+    const foundUser = users.find((u: any) => u.corporationId === corpCode && u.email.trim().toLowerCase() === emailInput);
 
     if (!foundUser) {
-      setLoginError('ユーザーIDが見つかりません。または所属企業が一致しません。');
+      setLoginError('登録されていないメールアドレス、または所属企業が一致しません。');
       return;
     }
 
@@ -190,13 +195,38 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       return;
     }
 
-    // ログイン成功
-    setActiveUser(foundUser);
-    onNotify(`${foundCorp.name}の${foundUser.name}様としてログインしました。`, 'success');
+    // 6桁のOTPコードを生成
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setOtpCode(code);
+    setTargetUserForLogin(foundUser);
+    setTargetCorpForLogin(foundCorp);
+    setIsOtpSent(true);
+    setUserEnteredOtp('');
+    onNotify('ログイン用パスコードをシミュレーターに送信しました。', 'success');
+  };
+
+  // 企業管理者ログイン用 OTP検証処理
+  const handleVerifyOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+
+    if (!userEnteredOtp.trim()) {
+      setLoginError('6桁の認証コードを入力してください。');
+      return;
+    }
+
+    if (userEnteredOtp.trim() === otpCode) {
+      if (!targetUserForLogin || !targetCorpForLogin) return;
+
+      setActiveUser(targetUserForLogin);
+      onNotify(`${targetCorpForLogin.name}の${targetUserForLogin.name}様としてログインしました。`, 'success');
+    } else {
+      setLoginError('認証コードが正しくありません。シミュレーターに表示されているコードを入力してください。');
+    }
   };
 
   // デモ用かんたんログインバイパス
-  const handleDemoLogin = (corpCode: string, uId: string) => {
+  const handleDemoLogin = (corpCode: string, email: string) => {
     setLoginError('');
     
     const storedCorps = localStorage.getItem('stress_check_corporations');
@@ -205,7 +235,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
 
     const storedUsers = localStorage.getItem('stress_check_corporate_users');
     const users = storedUsers ? JSON.parse(storedUsers) : [];
-    const foundUser = users.find((u: any) => u.corporationId === corpCode && u.userId === uId);
+    const foundUser = users.find((u: any) => u.corporationId === corpCode && u.email.trim().toLowerCase() === email.trim().toLowerCase());
 
     if (foundCorp && foundUser) {
       setActiveUser(foundUser);
@@ -219,7 +249,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const handleCorporateLogout = () => {
     setActiveUser(null);
     setLoginCorpId('');
-    setLoginUserId('');
+    setLoginEmail('');
+    setIsOtpSent(false);
+    setOtpCode('');
+    setUserEnteredOtp('');
+    setTargetUserForLogin(null);
+    setTargetCorpForLogin(null);
     setLoginError('');
     onNotify('ログアウトしました。', 'success');
   };
@@ -788,7 +823,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
               <Building2 size={32} className="text-primary" style={{ color: 'var(--primary)' }} />
             </div>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)' }}>企業管理者ログイン</h2>
-            <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>ストレスチェック制度 管理者専用ポータル</p>
+            <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>ストレスチェック制度 管理者専用ポータル (認証)</p>
           </div>
 
           {loginError && (
@@ -798,40 +833,112 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
           )}
 
-          <form onSubmit={handleCorporateLogin}>
-            <div className="form-group">
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Building2 size={14} className="text-muted" />
-                企業コード
-              </label>
-              <input 
-                type="text" 
-                className="form-control" 
-                value={loginCorpId}
-                onChange={(e) => setLoginCorpId(e.target.value)}
-                placeholder="例: CORP001"
-                style={{ textTransform: 'uppercase' }}
-              />
-            </div>
+          {!isOtpSent ? (
+            <form onSubmit={handleSendOtp}>
+              <div className="form-group">
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Building2 size={14} className="text-muted" />
+                  企業コード
+                </label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={loginCorpId}
+                  onChange={(e) => setLoginCorpId(e.target.value)}
+                  placeholder="例: CORP001"
+                  style={{ textTransform: 'uppercase' }}
+                  required
+                />
+              </div>
 
-            <div className="form-group">
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Lock size={14} className="text-muted" />
-                ユーザーID
-              </label>
-              <input 
-                type="password" 
-                className="form-control" 
-                value={loginUserId}
-                onChange={(e) => setLoginUserId(e.target.value)}
-                placeholder="例: USER001"
-              />
-            </div>
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Mail size={14} className="text-muted" />
+                  登録メールアドレス
+                </label>
+                <input 
+                  type="email" 
+                  className="form-control" 
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="sato@example.com"
+                  required
+                />
+              </div>
 
-            <button type="submit" className="btn btn-primary w-full mt-2" style={{ padding: '0.85rem', borderRadius: '8px' }}>
-              安全なログイン
-            </button>
-          </form>
+              <button type="submit" className="btn btn-primary w-full mt-2" style={{ padding: '0.85rem', borderRadius: '8px' }}>
+                認証コードを送信する <ArrowRight size={16} style={{ marginLeft: '6px', verticalAlign: 'middle' }} />
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp}>
+              <div className="alert-badge success mb-4" style={{ padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', lineHeight: '1.4', background: '#eff6ff', border: '1px solid #bfdbfe', color: 'var(--primary)' }}>
+                📧 <strong>{loginEmail}</strong> 宛に認証コードを送信しました。
+                <br />
+                ※デモ用の下のシミュレーターからコードをコピーしてください。
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Lock size={14} className="text-muted" />
+                  6桁の認証コード
+                </label>
+                <input 
+                  type="text" 
+                  maxLength={6}
+                  className="form-control" 
+                  value={userEnteredOtp}
+                  onChange={(e) => setUserEnteredOtp(e.target.value)}
+                  placeholder="123456"
+                  style={{ textAlign: 'center', letterSpacing: '8px', fontSize: '1.25rem', fontWeight: 700 }}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button type="button" className="btn btn-outline" onClick={() => setIsOtpSent(false)} style={{ flex: 1, padding: '0.8rem' }}>
+                  戻る
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ flex: 2, padding: '0.8rem' }}>
+                  認証してログイン <ShieldCheck size={18} style={{ marginLeft: '6px', verticalAlign: 'middle' }} />
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* デモ環境用：OTP配信シミュレーター */}
+          {isOtpSent && otpCode && (
+            <div className="otp-simulator-box mt-6" style={{
+              background: 'linear-gradient(135deg, rgba(30, 64, 175, 0.05), rgba(79, 70, 229, 0.05))',
+              border: '1px dashed rgba(30, 64, 175, 0.3)',
+              borderRadius: '12px',
+              padding: '1.25rem',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                <Sparkles size={14} /> OTP送信シミュレーター (HR管理者デモ用)
+              </div>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                メールサーバーに接続せず、ローカルで生成された検証用管理者パスコードです：
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <span style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '4px', background: 'white', padding: '4px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                  {otpCode}
+                </span>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(otpCode);
+                    onNotify('管理者用認証コードをコピーしました！', 'success');
+                  }} 
+                  className="btn btn-outline" 
+                  style={{ padding: '6px 12px', fontSize: '0.8rem', height: 'auto' }}
+                  type="button"
+                >
+                  コピー
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="divider-text" style={{ margin: '1.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
             <span style={{ height: '1px', background: '#cbd5e1', flex: 1 }}></span>
@@ -842,22 +949,22 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           <div className="demo-login-box" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <button 
               type="button" 
-              onClick={() => handleDemoLogin('CORP001', 'USER001')} 
+              onClick={() => handleDemoLogin('CORP001', 'sato@example.com')} 
               className="btn btn-outline w-full demo-login-btn"
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#f0f9ff' }}
             >
               <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1e40af' }}>佐藤HR管理者としてログイン</span>
-              <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 500 }}>テクノロジーラボ (CORP001) / 10名受検完了</span>
+              <span style={{ fontSize: '0.7rem', color: '#60a5fa', fontWeight: 500 }}>テクノロジーラボ (CORP001) / sato@example.com</span>
             </button>
 
             <button 
               type="button" 
-              onClick={() => handleDemoLogin('CORP002', 'USER002')} 
+              onClick={() => handleDemoLogin('CORP002', 'suzuki@example.com')} 
               className="btn btn-outline w-full demo-login-btn"
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0.75rem', borderRadius: '8px', border: '1px solid #fed7aa', background: '#fff7ed' }}
             >
               <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#c2410c' }}>鈴木営業管理者としてログイン</span>
-              <span style={{ fontSize: '0.7rem', color: '#fb923c', fontWeight: 500 }}>グローバル営業本部 (CORP002) / 3名受検完了</span>
+              <span style={{ fontSize: '0.7rem', color: '#fb923c', fontWeight: 500 }}>グローバル営業本部 (CORP002) / suzuki@example.com</span>
             </button>
           </div>
         </div>
