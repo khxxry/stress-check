@@ -189,8 +189,8 @@ const App: React.FC = () => {
     if (!localStorage.getItem('stress_check_results')) {
       const seedResults: ExamineeResult[] = [];
 
-      // A. テナント1 (CORP001): 50名受検完了 (54名中)
-      for (let i = 1; i <= 50; i++) {
+      // A. テナント1 (CORP001): 51名受検完了 (54名中)
+      for (let i = 1; i <= 51; i++) {
         const empCode = `EMP${String(i).padStart(3, '0')}`;
         const isFemale = i % 2 === 0;
         const gender: Gender = isFemale ? 'female' : 'male';
