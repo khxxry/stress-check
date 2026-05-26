@@ -92,6 +92,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [results, setResults] = useState<ExamineeResult[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [resultSearchTerm, setResultSearchTerm] = useState('');
+  const [resultsCurrentPage, setResultsCurrentPage] = useState(1);
+  const [resultsItemsPerPage, setResultsItemsPerPage] = useState(20);
+
+  // 検索条件やユーザーが切り替わったときにページ数を1にリセット
+  useEffect(() => {
+    setResultsCurrentPage(1);
+  }, [resultSearchTerm, activeUser]);
+
   const [selectedResult, setSelectedResult] = useState<ExamineeResult | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
@@ -769,6 +777,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       email.toLowerCase().includes(query)
     );
   });
+
+  const resultsTotalPages = Math.ceil(filteredResults.length / resultsItemsPerPage);
+  const paginatedResults = filteredResults.slice(
+    (resultsCurrentPage - 1) * resultsItemsPerPage,
+    resultsCurrentPage * resultsItemsPerPage
+  );
 
   if (activeUser === null) {
     return (
@@ -1541,7 +1555,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                         </td>
                       </tr>
                     ) : (
-                      filteredResults.map((res) => {
+                      paginatedResults.map((res) => {
                         const emp = employees.find(e => e.employeeCode === res.employeeCode);
                         const name = emp ? emp.name : 'ゲスト受検者';
                         const dept = emp ? emp.department : '未割り当て';
@@ -1588,6 +1602,79 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                     )}
                   </tbody>
                 </table>
+
+                {/* ページネーションコントロールバー */}
+                {filteredResults.length > 0 && (
+                  <div className="pagination-bar flex items-center justify-between p-4 border-t border-gray-200" style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div className="text-muted" style={{ fontSize: '0.82rem', fontWeight: 500 }}>
+                      全 <strong>{filteredResults.length}</strong> 件中 <strong>{filteredResults.length === 0 ? 0 : (resultsCurrentPage - 1) * resultsItemsPerPage + 1}〜{Math.min(filteredResults.length, resultsCurrentPage * resultsItemsPerPage)}</strong> 件を表示
+                    </div>
+
+                    <div className="flex gap-4 items-center" style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {/* ページサイズセレクター */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                        <span>表示件数:</span>
+                        <select
+                          value={resultsItemsPerPage}
+                          onChange={(e) => {
+                            setResultsItemsPerPage(Number(e.target.value));
+                            setResultsCurrentPage(1);
+                          }}
+                          style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', fontWeight: 600, outline: 'none' }}
+                        >
+                          <option value={10}>10 件</option>
+                          <option value={20}>20 件</option>
+                          <option value={50}>50 件</option>
+                          <option value={100}>100 件</option>
+                        </select>
+                      </div>
+
+                      {/* ページ選択ボタン */}
+                      {resultsTotalPages > 1 && (
+                        <div className="flex gap-1" style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            className="pagination-btn"
+                            disabled={resultsCurrentPage === 1}
+                            onClick={() => setResultsCurrentPage(resultsCurrentPage - 1)}
+                            style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', cursor: resultsCurrentPage === 1 ? 'not-allowed' : 'pointer', opacity: resultsCurrentPage === 1 ? 0.5 : 1, fontSize: '0.8rem', fontWeight: 700 }}
+                          >
+                            前へ
+                          </button>
+                          
+                          {Array.from({ length: resultsTotalPages }, (_, i) => i + 1).map(pageNum => (
+                            <button
+                              key={pageNum}
+                              className={`pagination-btn ${resultsCurrentPage === pageNum ? 'active' : ''}`}
+                              onClick={() => setResultsCurrentPage(pageNum)}
+                              style={{
+                                padding: '5px 10px',
+                                borderRadius: '4px',
+                                border: '1px solid',
+                                borderColor: resultsCurrentPage === pageNum ? 'var(--primary)' : '#cbd5e1',
+                                background: resultsCurrentPage === pageNum ? 'linear-gradient(135deg, var(--primary) 0%, #1e3a8a 100%)' : 'white',
+                                color: resultsCurrentPage === pageNum ? 'white' : 'var(--text-main)',
+                                cursor: 'pointer',
+                                fontWeight: 700,
+                                fontSize: '0.8rem'
+                              }}
+                            >
+                              {pageNum}
+                            </button>
+                          ))}
+
+                          <button
+                            className="pagination-btn"
+                            disabled={resultsCurrentPage === resultsTotalPages}
+                            onClick={() => setResultsCurrentPage(resultsCurrentPage + 1)}
+                            style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', background: 'white', cursor: resultsCurrentPage === resultsTotalPages ? 'not-allowed' : 'pointer', opacity: resultsCurrentPage === resultsTotalPages ? 0.5 : 1, fontSize: '0.8rem', fontWeight: 700 }}
+                          >
+                            次へ
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
