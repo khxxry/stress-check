@@ -2124,7 +2124,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                             <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '6px' }}>🔎 部署ごとのストレス特徴</h4>
                             <p style={{ fontSize: '0.8rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
                               {getDeptStats(selectedDept).avgReaction < 3.2 
-                                ? '心身のストレス反応平均値が平均基準を下回っています。疲労感やイライラ感を感じている従業員が比較的多い兆候があります。適度な残業抑制や、業務調整のヒアリングを実施することを推奨します。'
+                                ? '心身の健康度（ストレス反応の少なさ）指標が基準を下回っており、疲労感やイライラ感を感じている従業員が比較的多い兆候があります。適度な残業抑制や、業務調整のヒアリングを実施することを推奨します。'
                                 : '心身のストレス反応、仕事の要因、サポート環境がともに安定的な高水準に保たれています。活気が高く、良好な健康状態が持続されています。'}
                             </p>
                           </div>
