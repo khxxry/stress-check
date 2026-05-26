@@ -264,8 +264,6 @@ Error generating stack: `+i.message+`
           width: 100%;
         }
         .table-responsive {
-          max-height: 480px;
-          overflow-y: auto;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
         .admin-table th, .admin-table td {
