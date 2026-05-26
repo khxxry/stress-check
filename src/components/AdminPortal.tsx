@@ -36,6 +36,23 @@ interface AdminPortalProps {
   onNotify: (message: string, type: 'success' | 'error') => void;
 }
 
+interface CampaignHistoryItem {
+  campaignName: string;
+  startDate: string;
+  endDate: string;
+  customNoticeStart: string;
+  customNoticeHighStress: string;
+  useConsent: boolean;
+  discloseLabel: string;
+  discloseNotice: string;
+  consentTiming: 'before' | 'after';
+  displayCondition: 'all' | 'high_stress_only' | 'recommended_only' | 'disabled';
+  requireDisclosure: 'required' | 'optional' | 'none';
+  receptionDays: number;
+  notificationEmails: string;
+  status: 'preparing' | 'active' | 'finished';
+}
+
 interface CSVRow {
   employeeCode: string;
   name: string;
@@ -54,7 +71,11 @@ interface ParsedCSVItem {
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   const [activeTab, setActiveTab] = useState<'wizard' | 'results' | 'employees'>('wizard');
-  const [resultsSubTab, setResultsSubTab] = useState<'list' | 'dashboard'>('list');
+  const [resultsSubTab, setResultsSubTab] = useState<'list' | 'dashboard' | 'history'>('list');
+  const [selectedCampaignName, setSelectedCampaignName] = useState<string>('');
+  const [campaignHistory, setCampaignHistory] = useState<CampaignHistoryItem[]>([]);
+  const [isCampaignDetailsOpen, setIsCampaignDetailsOpen] = useState<boolean>(false);
+  const [isDevConsoleOpen, setIsDevConsoleOpen] = useState<boolean>(false);
   
   // ==========================================
   // 0. テナント・企業管理者コンテキスト
@@ -273,6 +294,118 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
 
     // B. テナント分離された従業員・結果データのフィルタリングロード
     loadResultsAndEmployees(corpId);
+
+    // C. 過去キャンペーン履歴のシードとロード
+    const historyKey = `stress_check_campaign_history_${corpId}`;
+    let history: CampaignHistoryItem[] = [];
+    const storedHistory = localStorage.getItem(historyKey);
+    if (storedHistory) {
+      history = JSON.parse(storedHistory);
+    } else {
+      let currentCamp: CampaignSettings;
+      if (storedCampaign) {
+        currentCamp = JSON.parse(storedCampaign);
+      } else {
+        currentCamp = {
+          campaignName: corpId === 'CORP002' ? 'グローバル営業 メンタルケア調査' : '令和8年度 春期定期ストレスチェック',
+          startDate: '2026-05-26T09:31',
+          endDate: '2026-06-09T10:31',
+          customNoticeStart: corpId === 'CORP002' ? '営業職特有の労働負荷状況を捉え、安全かつ良好な業務姿勢を維持するための適性評価です。ご協力ください。' : '日頃のストレス状況を把握し、健康的なワークライフを送るためのチェックです。正直にお答えください（所要時間約5分）。',
+          customNoticeHighStress: corpId === 'CORP002' ? '判定スコアに負荷の偏りが見受けられました。速やかに産業医面談などのカウンセリングを実施することをお勧めします。' : '判定の結果、ストレス反応が高い状態であることがわかりました。自身の心身の健康のため、医師面接等のセルフケアをご検討ください。',
+          status: 'active'
+        };
+      }
+      
+      const currentConsent: ConsentSettings = storedConsent ? JSON.parse(storedConsent) : {
+        useConsent: true,
+        discloseLabel: corpId === 'CORP002' ? 'グローバル営業本部' : 'テクノロジーラボ',
+        discloseNotice: corpId === 'CORP002' ? '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。' : '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。同意された場合、結果は職場環境の改善や必要に応じた産業医面談等の健康管理のために利用されます。',
+        consentTiming: corpId === 'CORP002' ? 'before' : 'after'
+      };
+
+      const currentInterview: InterviewSettings = storedInterview ? JSON.parse(storedInterview) : {
+        displayCondition: 'high_stress_only',
+        requireDisclosure: 'required',
+        receptionDays: corpId === 'CORP002' ? 30 : 14,
+        notificationEmails: corpId === 'CORP002' ? 'admin@example.com' : 'sato@example.com'
+      };
+
+      history.push({
+        campaignName: currentCamp.campaignName,
+        startDate: currentCamp.startDate,
+        endDate: currentCamp.endDate,
+        customNoticeStart: currentCamp.customNoticeStart,
+        customNoticeHighStress: currentCamp.customNoticeHighStress,
+        useConsent: currentConsent.useConsent,
+        discloseLabel: currentConsent.discloseLabel,
+        discloseNotice: currentConsent.discloseNotice,
+        consentTiming: currentConsent.consentTiming,
+        displayCondition: currentInterview.displayCondition,
+        requireDisclosure: currentInterview.requireDisclosure,
+        receptionDays: currentInterview.receptionDays,
+        notificationEmails: currentInterview.notificationEmails,
+        status: 'active'
+      });
+
+      if (corpId === 'CORP001') {
+        history.push({
+          campaignName: '令和7年度 秋期定期ストレスチェック',
+          startDate: '2025-10-15T09:00',
+          endDate: '2025-10-30T18:00',
+          customNoticeStart: '日頃のストレス状況を把握し、健康的なワークライフを送るための令和7年度秋期定期ストレスチェックです。',
+          customNoticeHighStress: '判定の結果、ストレス反応が高い状態であることがわかりました。自身の心身の健康のため、医師面接等のセルフケアをご検討ください。',
+          useConsent: true,
+          discloseLabel: 'テクノロジーラボ',
+          discloseNotice: '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。',
+          consentTiming: 'after',
+          displayCondition: 'high_stress_only',
+          requireDisclosure: 'required',
+          receptionDays: 30,
+          notificationEmails: 'sato@example.com',
+          status: 'finished'
+        });
+
+        history.push({
+          campaignName: '令和7年度 春期定期ストレスチェック',
+          startDate: '2025-05-12T09:00',
+          endDate: '2025-05-26T18:00',
+          customNoticeStart: '日頃のストレス状況を把握し、健康的なワークライフを送るための令和7年度春期定期ストレスチェックです。',
+          customNoticeHighStress: '判定の結果、ストレス反応が高い状態であることがわかりました。自身の心身の健康のため、医師面接等のセルフケアをご検討ください。',
+          useConsent: true,
+          discloseLabel: 'テクノロジーラボ',
+          discloseNotice: '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。',
+          consentTiming: 'after',
+          displayCondition: 'high_stress_only',
+          requireDisclosure: 'required',
+          receptionDays: 30,
+          notificationEmails: 'sato@example.com',
+          status: 'finished'
+        });
+      } else if (corpId === 'CORP002') {
+        history.push({
+          campaignName: '令和7年度 秋期定期ストレスチェック',
+          startDate: '2025-10-15T09:00',
+          endDate: '2025-10-30T18:00',
+          customNoticeStart: '営業職特有の労働負荷状況を捉え、安全かつ良好な業務姿勢を維持するための適性評価です。',
+          customNoticeHighStress: '判定スコアに負荷の偏りが見受けられました。速やかに産業医面談などのカウンセリングを実施することをお勧めします。',
+          useConsent: true,
+          discloseLabel: 'グローバル営業本部',
+          discloseNotice: '本ストレスチェックの結果は、労働安全衛生法に基づき、あなたの同意がある場合に限り事業者に開示されます。',
+          consentTiming: 'before',
+          displayCondition: 'high_stress_only',
+          requireDisclosure: 'required',
+          receptionDays: 30,
+          notificationEmails: 'admin@example.com',
+          status: 'finished'
+        });
+      }
+      
+      localStorage.setItem(historyKey, JSON.stringify(history));
+    }
+    
+    setCampaignHistory(history);
+    const activeCamp = history.find(c => c.status === 'active') || history[0];
+    setSelectedCampaignName(activeCamp ? activeCamp.campaignName : '');
   }, [activeUser]);
 
   const loadResultsAndEmployees = (corpId: string) => {
@@ -349,6 +482,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
       notificationEmails: notificationEmails.trim()
     };
     localStorage.setItem(`stress_check_interview_${corpId}`, JSON.stringify(interview));
+
+    // 過去履歴のactive項目も更新
+    const historyKey = `stress_check_campaign_history_${corpId}`;
+    const storedHistory = localStorage.getItem(historyKey);
+    if (storedHistory) {
+      let hist: CampaignHistoryItem[] = JSON.parse(storedHistory);
+      let activeIndex = hist.findIndex(c => c.status === 'active');
+      const updatedActiveItem: CampaignHistoryItem = {
+        campaignName: campaignName.trim(),
+        startDate,
+        endDate,
+        customNoticeStart: customNoticeStart.trim(),
+        customNoticeHighStress: customNoticeHighStress.trim(),
+        useConsent,
+        discloseLabel: discloseLabel.trim(),
+        discloseNotice: discloseNotice.trim(),
+        consentTiming,
+        displayCondition,
+        requireDisclosure,
+        receptionDays,
+        notificationEmails: notificationEmails.trim(),
+        status: 'active'
+      };
+
+      if (activeIndex !== -1) {
+        hist[activeIndex] = updatedActiveItem;
+      } else {
+        hist.unshift(updatedActiveItem);
+      }
+      localStorage.setItem(historyKey, JSON.stringify(hist));
+      setCampaignHistory(hist);
+      
+      if (selectedCampaignName === '' || selectedCampaignName === (hist[activeIndex]?.campaignName || '')) {
+        setSelectedCampaignName(campaignName.trim());
+      }
+    }
 
     onNotify('設定がLocalStorageに保存され、キャンペーンが有効化されました！', 'success');
     setAdminStep(1); 
@@ -689,7 +858,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   // 部署別統計算出
   const getDeptStats = (deptName: string) => {
     const deptEmployees = employees.filter(e => e.status === 'active' && e.department === deptName);
-    const deptResults = results.filter(r => {
+    const campaignResults = results.filter(r => r.campaignName === selectedCampaignName);
+    const deptResults = campaignResults.filter(r => {
       const emp = employees.find(e => e.employeeCode === r.employeeCode);
       return emp && emp.department === deptName;
     });
@@ -759,13 +929,27 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     setSelectedEmployee(emp);
   };
 
-  const totalEmployees = employees.filter(e => e.status === 'active').length;
-  const completedCount = results.length;
-  const completionRate = totalEmployees > 0 ? Math.round((completedCount / totalEmployees) * 100) : 0;
-  const highStressCount = results.filter(r => r.isHighStress).length;
-  const interviewRequestCount = results.filter(r => r.requestInterview).length;
+  // 選択された回号でフィルタリングされた受検結果
+  const campaignFilteredResults = results.filter(r => r.campaignName === selectedCampaignName);
 
-  const filteredResults = results.filter(res => {
+  // 選択された回号における対象者数（過去の回号では結果データの母数や適当な対象者数、現在の回号では現在のアクティブ従業員数）
+  const getCampaignTotalEmployees = () => {
+    if (selectedCampaignName === '令和7年度 秋期定期ストレスチェック') {
+      return activeUser?.corporationId === 'CORP002' ? 4 : 50;
+    }
+    if (selectedCampaignName === '令和7年度 春期定期ストレスチェック') {
+      return 48;
+    }
+    return employees.filter(e => e.status === 'active').length;
+  };
+
+  const totalEmployees = getCampaignTotalEmployees();
+  const completedCount = campaignFilteredResults.length;
+  const completionRate = totalEmployees > 0 ? Math.round((completedCount / totalEmployees) * 100) : 0;
+  const highStressCount = campaignFilteredResults.filter(r => r.isHighStress).length;
+  const interviewRequestCount = campaignFilteredResults.filter(r => r.requestInterview).length;
+
+  const filteredResults = campaignFilteredResults.filter(res => {
     const emp = employees.find(e => e.employeeCode === res.employeeCode);
     const name = emp ? emp.name : 'ゲスト';
     const email = emp ? emp.email : '';
@@ -783,6 +967,37 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     (resultsCurrentPage - 1) * resultsItemsPerPage,
     resultsCurrentPage * resultsItemsPerPage
   );
+
+  const selectedCampaignSettings = campaignHistory.find(c => c.campaignName === selectedCampaignName) || {
+    campaignName: campaignName,
+    startDate: startDate,
+    endDate: endDate,
+    customNoticeStart: customNoticeStart,
+    customNoticeHighStress: customNoticeHighStress,
+    useConsent: useConsent,
+    discloseLabel: discloseLabel,
+    discloseNotice: discloseNotice,
+    consentTiming: consentTiming,
+    displayCondition: displayCondition,
+    requireDisclosure: requireDisclosure,
+    receptionDays: receptionDays,
+    notificationEmails: notificationEmails,
+    status: 'active' as const
+  };
+
+  const displayCampaignName = selectedCampaignSettings.campaignName;
+  const displayStartDate = selectedCampaignSettings.startDate;
+  const displayEndDate = selectedCampaignSettings.endDate;
+  const displayCustomNoticeStart = selectedCampaignSettings.customNoticeStart;
+  const displayCustomNoticeHighStress = selectedCampaignSettings.customNoticeHighStress;
+  const displayUseConsent = selectedCampaignSettings.useConsent;
+  const displayDiscloseLabel = selectedCampaignSettings.discloseLabel;
+  const displayDiscloseNotice = selectedCampaignSettings.discloseNotice;
+  const displayConsentTiming = selectedCampaignSettings.consentTiming;
+  const displayConditionVal = selectedCampaignSettings.displayCondition;
+  const displayRequireDisclosure = selectedCampaignSettings.requireDisclosure;
+  const displayReceptionDays = selectedCampaignSettings.receptionDays;
+  const displayNotificationEmails = selectedCampaignSettings.notificationEmails;
 
   if (activeUser === null) {
     return (
@@ -873,75 +1088,138 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   return (
     <div className="admin-portal-container fade-in">
       {/* 開発・デモ検証用コンテキストスイッチャー */}
-      <details className="dev-tool-accordion mb-6" style={{ width: '100%' }}>
+      {/* 開発・デモ検証用コンテキストスイッチャー */}
+      <details 
+        className="dev-tool-accordion mb-6" 
+        style={{ width: '100%' }}
+        open={isDevConsoleOpen}
+        onToggle={(e) => setIsDevConsoleOpen(e.currentTarget.open)}
+      >
         <summary className="dev-tool-summary cursor-pointer p-3 rounded-lg border flex items-center justify-between text-xs font-bold text-gray-500" style={{ background: '#f8fafc', borderColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', listStyle: 'none' }}>
           <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '14px' }}>🔧</span>
             <span>【デモ・動作検証用】テナント擬似切り替えツール</span>
           </div>
-          <span className="toggle-indicator text-xs font-normal" style={{ color: 'var(--primary)' }}>(クリックして展開)</span>
+          <span className="toggle-indicator text-xs font-normal" style={{ color: 'var(--primary)' }}>
+            {isDevConsoleOpen ? '詳細を閉じる ▴' : '詳細を展開 ▾'}
+          </span>
         </summary>
         
-        <div className="tenant-context-bar flex items-center justify-between p-4 mt-2 rounded-xl border transition-all duration-300" style={{ background: 'var(--glass-bg)', borderColor: '#cbd5e1', display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-          <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div className="p-2 rounded-lg text-primary" style={{ background: '#eff6ff', padding: '8px' }}>
-              <Building2 size={24} className="text-primary" />
-            </div>
-            <div>
-              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400">現在選択中の企業</div>
-              <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {activeUser ? activeUser.name : '未選択'}
-                <span className="text-xs text-gray-500 font-normal bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700">
-                  {activeUser ? activeUser.corporationId : ''}
-                </span>
+        <div className="tenant-context-bar p-5 mt-2 rounded-xl border transition-all duration-300" style={{ background: 'var(--glass-bg)', borderColor: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+            
+            {/* 左側: 現在のアクティブ情報２行表示 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '10px', color: 'var(--primary)' }}>
+                <Building2 size={24} />
+              </div>
+              <div style={{ fontSize: '0.82rem', lineHeight: '1.4' }}>
+                <div style={{ color: '#475569', fontWeight: 600 }}>
+                  現在アクティブ：<span style={{ fontWeight: 700, color: '#1e293b' }}>{(() => {
+                    const storedCorps = localStorage.getItem('stress_check_corporations');
+                    const corps = storedCorps ? JSON.parse(storedCorps) : [];
+                    const c = corps.find((corp: any) => corp.corporationId === activeUser?.corporationId);
+                    return c ? c.name : '未選択';
+                  })()}</span>
+                </div>
+                <div style={{ color: '#64748b', fontWeight: 500 }}>
+                  管理者　<span style={{ fontWeight: 700, color: '#1e293b' }}>{activeUser?.name || '未選択'}</span>　
+                  <span style={{ 
+                    fontWeight: 600, 
+                    color: '#ffffff', 
+                    background: (() => {
+                      const storedCorps = localStorage.getItem('stress_check_corporations');
+                      const corps = storedCorps ? JSON.parse(storedCorps) : [];
+                      const c = corps.find((corp: any) => corp.corporationId === activeUser?.corporationId);
+                      return c?.plan === 'premium' ? 'linear-gradient(135deg, #d97706 0%, #b45309 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)';
+                    })(),
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    fontSize: '0.72rem',
+                    marginLeft: '4px'
+                  }}>
+                    {(() => {
+                      const storedCorps = localStorage.getItem('stress_check_corporations');
+                      const corps = storedCorps ? JSON.parse(storedCorps) : [];
+                      const c = corps.find((corp: any) => corp.corporationId === activeUser?.corporationId);
+                      return c?.plan ? (c.plan.charAt(0).toUpperCase() + c.plan.slice(1)) : '';
+                    })()}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-2" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <label className="text-xs font-bold text-gray-500 dark:text-gray-400">管理者コンテキスト:</label>
-            <select
-              value={activeUser ? activeUser.userId : ''}
-              onChange={(e) => {
-                const selected = corporateUsers.find(u => u.userId === e.target.value);
-                if (selected) {
-                  setActiveUser(selected);
-                  onNotify(`管理者コンテキストを「${selected.name}」に切り替えました。`, 'success');
-                }
-              }}
-              className="py-1.5 px-3 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            >
-              {corporateUsers.map(user => (
-                <option key={user.userId} value={user.userId}>
-                  {user.name} ({user.corporationId} - {user.role === 'admin' ? '実施管理者' : '共同閲覧者'})
-                </option>
-              ))}
-            </select>
-            
-            <button
-              onClick={() => {
-                if (window.confirm('すべてのローカルストレージデータを削除し、初期デモ状態（一貫性のあるデータ）にリセットしますか？\n※ページは自動的にリロードされます。')) {
-                  localStorage.clear();
-                  window.location.reload();
-                }
-              }}
-              className="btn btn-outline"
-              style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.75rem',
-                borderRadius: '6px',
-                borderColor: '#fca5a5',
-                color: '#dc2626',
-                background: '#fef2f2',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontWeight: 700
-              }}
-            >
-              <RefreshCw size={12} />
-              デモデータ初期化
-            </button>
+
+            {/* 右側: セレクターと各種アクションボタン */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>クイック切り替え:</label>
+              <select
+                value={activeUser ? activeUser.userId : ''}
+                onChange={(e) => {
+                  const selected = corporateUsers.find(u => u.userId === e.target.value);
+                  if (selected) {
+                    setActiveUser(selected);
+                    onNotify(`管理者コンテキストを「${selected.name}」に切り替えました。`, 'success');
+                  }
+                }}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: 'white',
+                  fontWeight: 600
+                }}
+              >
+                {corporateUsers.map(user => (
+                  <option key={user.userId} value={user.userId}>
+                    {user.name} ({user.corporationId} - {user.role === 'admin' ? '実施管理者' : '共同閲覧者'})
+                  </option>
+                ))}
+              </select>
+              
+              <button
+                onClick={() => {
+                  if (window.confirm('すべてのローカルストレージデータを削除し、初期デモ状態にリセットしますか？\n※ページは自動的にリロードされます。')) {
+                    localStorage.clear();
+                    window.location.reload();
+                  }
+                }}
+                className="btn btn-outline"
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.78rem',
+                  borderRadius: '6px',
+                  borderColor: '#fca5a5',
+                  color: '#dc2626',
+                  background: '#fef2f2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontWeight: 700
+                }}
+              >
+                <RefreshCw size={12} />
+                デモ初期化
+              </button>
+
+              <button
+                onClick={() => setIsDevConsoleOpen(false)}
+                className="btn btn-outline"
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  borderRadius: '6px',
+                  borderColor: '#cbd5e1',
+                  color: '#475569',
+                  background: '#f8fafc',
+                  fontWeight: 700
+                }}
+              >
+                <X size={12} style={{ marginRight: '2px' }} />
+                コンソールを閉じる
+              </button>
+            </div>
+
           </div>
         </div>
       </details>
@@ -964,7 +1242,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           >
             <ClipboardList size={18} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
             受検結果トラッキング
-            {results.length > 0 && <span className="tab-badge">{results.length}</span>}
+            {campaignFilteredResults.length > 0 && <span className="tab-badge">{campaignFilteredResults.length}</span>}
           </button>
           <button 
             className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
@@ -1248,7 +1526,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                 </div>
 
                 {useConsent && (
-                  <div className="consent-sub-fields fade-in mt-4 pl-4" style={{ borderLeft: '3px solid var(--primary-light)' }}>
+                  <div className="consent-sub-fields fade-in mt-4" style={{ background: 'rgba(30, 64, 175, 0.03)', border: '1px dashed rgba(30, 64, 175, 0.15)', borderRadius: '8px', padding: '1.25rem' }}>
                     <div className="form-group">
                       <label className="form-label">「事業者」の呼称カスタマイズ (10文字以内)</label>
                       <input 
@@ -1321,7 +1599,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
                 </div>
 
                 {displayCondition !== 'disabled' && (
-                  <div className="interview-sub-fields fade-in mt-4 pl-4" style={{ borderLeft: '3px solid var(--primary-light)' }}>
+                  <div className="interview-sub-fields fade-in mt-4" style={{ background: 'rgba(30, 64, 175, 0.03)', border: '1px dashed rgba(30, 64, 175, 0.15)', borderRadius: '8px', padding: '1.25rem' }}>
                     <div className="form-group">
                       <label className="form-label">事業者への個人結果開示の取得方針</label>
                       <select 
@@ -1445,7 +1723,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           タブ2: 受検結果トラッキング
           ========================================== */}
       {activeTab === 'results' && (
-        <div className="card fade-in" style={{ maxWidth: '800px' }}>
+        <div className="card fade-in" style={{ maxWidth: '1050px' }}>
           <div className="admin-header mb-6 flex justify-between items-center flex-wrap gap-4">
             <div>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>受検結果トラッキング ＆ 分析</h2>
@@ -1473,6 +1751,150 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
           </div>
 
+          {/* 実施管理設定レビューパネル (アコーディオン) */}
+          <details 
+            className="campaign-details-accordion mb-6" 
+            style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', background: '#f8fafc' }}
+            open={isCampaignDetailsOpen}
+            onToggle={(e) => setIsCampaignDetailsOpen(e.currentTarget.open)}
+          >
+            <summary 
+              className="cursor-pointer p-4 flex items-center justify-between"
+              style={{ listStyle: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', userSelect: 'none' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                  <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>📋 表示対象の回号:</span>
+                  <select
+                    value={selectedCampaignName}
+                    onChange={(e) => {
+                      setSelectedCampaignName(e.target.value);
+                      onNotify(`表示データを「${e.target.value}」に切り替えました。`, 'success');
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '0.85rem',
+                      borderRadius: '6px',
+                      border: '1.5px solid #2563eb',
+                      background: 'white',
+                      fontWeight: 700,
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      boxShadow: '0 1px 3px rgba(37, 99, 235, 0.05)'
+                    }}
+                  >
+                    {campaignHistory.map((item) => (
+                      <option key={item.campaignName} value={item.campaignName}>
+                        {item.campaignName} {item.status === 'active' ? '🟢 (実施中)' : '⚫ (期間終了)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <span style={{ color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  ⏰ 実施期間: <span style={{ color: '#1e3a8a', fontWeight: 600 }}>{displayStartDate.replace('T', ' ')} 〜 {displayEndDate.replace('T', ' ')}</span>
+                </span>
+              </div>
+              <span 
+                className="btn btn-outline" 
+                style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '6px', fontWeight: 700, borderColor: '#cbd5e1', color: '#475569', background: '#f8fafc' }}
+              >
+                {isCampaignDetailsOpen ? '詳細設定を閉じる ▴' : '詳細設定を展開 ▾'}
+              </span>
+            </summary>
+
+            <div 
+              style={{ padding: '1.25rem', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '1.25rem', background: 'rgba(255, 255, 255, 0.6)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                
+                {/* 同意フォーム設定レビュー */}
+                <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ShieldAlert size={15} />
+                    結果開示同意フォーム設定
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '6px 0', color: '#64748b', width: '120px' }}>開示同意フォーム</td>
+                        <td style={{ padding: '6px 0', fontWeight: 600 }}>{displayUseConsent ? '使用する' : '使用しない'}</td>
+                      </tr>
+                      {displayUseConsent && (
+                        <>
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '6px 0', color: '#64748b' }}>事業者の呼称</td>
+                            <td style={{ padding: '6px 0', fontWeight: 600 }}>{displayDiscloseLabel}</td>
+                          </tr>
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '6px 0', color: '#64748b' }}>同意タイミング</td>
+                            <td style={{ padding: '6px 0', fontWeight: 600 }}>{displayConsentTiming === 'before' ? '受検開始前' : '受検完了直後'}</td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '6px 0', color: '#64748b', verticalAlign: 'top' }}>説明文面</td>
+                            <td style={{ padding: '6px 0', fontSize: '0.75rem', color: '#475569', lineHeight: '1.4' }}>{displayDiscloseNotice}</td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 医師面接受付設定レビュー */}
+                <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Users size={15} />
+                    医師面接指導受付フォーム設定
+                  </h4>
+                  <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '6px 0', color: '#64748b', width: '120px' }}>面接申込の表示対象</td>
+                        <td style={{ padding: '6px 0', fontWeight: 600 }}>
+                          {displayConditionVal === 'high_stress_only' ? '高ストレス者のみ' : 
+                           displayConditionVal === 'all' ? '全員' : 
+                           displayConditionVal === 'recommended_only' ? '面接勧奨者のみ' : '使用しない'}
+                        </td>
+                      </tr>
+                      {displayConditionVal !== 'disabled' && (
+                        <>
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '6px 0', color: '#64748b' }}>結果開示の取得方針</td>
+                            <td style={{ padding: '6px 0', fontWeight: 600 }}>
+                              {displayRequireDisclosure === 'required' ? '事業者への結果開示同意を必須とする' : 
+                               displayRequireDisclosure === 'optional' ? '開示同意は任意とする' : '開示同意は不要'}
+                            </td>
+                          </tr>
+                          <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '6px 0', color: '#64748b' }}>面接申込受付期間</td>
+                            <td style={{ padding: '6px 0', fontWeight: 600 }}>キャンペーン終了翌日から {displayReceptionDays} 日間</td>
+                          </tr>
+                          <tr>
+                            <td style={{ padding: '6px 0', color: '#64748b' }}>自動通知メール先</td>
+                            <td style={{ padding: '6px 0', fontWeight: 600, color: 'var(--primary)', wordBreak: 'break-all' }}>{displayNotificationEmails}</td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 案内・説明文面レビュー */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h5 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '0.4rem' }}>受検開始案内の説明文面</h5>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: '1.5', margin: 0 }}>{displayCustomNoticeStart}</p>
+                </div>
+                <div style={{ background: '#ffffff', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <h5 style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', marginBottom: '0.4rem' }}>高ストレス判定時の案内文面</h5>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', lineHeight: '1.5', margin: 0 }}>{displayCustomNoticeHighStress}</p>
+                </div>
+              </div>
+            </div>
+          </details>
+
           {/* クイック統計パネル */}
           <div className="stats-grid mb-6">
             <div className="stat-card">
@@ -1499,21 +1921,70 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
             </div>
           </div>
 
-          {/* サブタブ切り替え: 結果一覧 vs 組織ダッシュボード */}
-          <div className="results-subtabs mb-4 flex gap-2" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+          {/* タブ切り替え（対象回号の下に配置。よりタブらしいプレミアムデザイン） */}
+          <div className="mb-4" style={{ borderBottom: '2px solid #e2e8f0', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
             <button 
-              className={`btn btn-outline ${resultsSubTab === 'list' ? 'btn-primary text-white' : ''}`}
+              className={`tab-item ${resultsSubTab === 'list' ? 'active' : ''}`}
               onClick={() => setResultsSubTab('list')}
-              style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '4px' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                borderBottom: resultsSubTab === 'list' ? '3px solid #2563eb' : '3px solid transparent',
+                color: resultsSubTab === 'list' ? '#2563eb' : '#64748b',
+                fontWeight: resultsSubTab === 'list' ? 700 : 500,
+                padding: '12px 8px',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginBottom: '-2px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
             >
-              受検結果一覧
+              <span>📊</span> 受検結果一覧
             </button>
             <button 
-              className={`btn btn-outline ${resultsSubTab === 'dashboard' ? 'btn-primary text-white' : ''}`}
+              className={`tab-item ${resultsSubTab === 'dashboard' ? 'active' : ''}`}
               onClick={() => { setResultsSubTab('dashboard'); loadResultsAndEmployees(activeUser ? activeUser.corporationId : 'CORP001'); }}
-              style={{ padding: '4px 12px', fontSize: '0.82rem', borderRadius: '4px' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                borderBottom: resultsSubTab === 'dashboard' ? '3px solid #2563eb' : '3px solid transparent',
+                color: resultsSubTab === 'dashboard' ? '#2563eb' : '#64748b',
+                fontWeight: resultsSubTab === 'dashboard' ? 700 : 500,
+                padding: '12px 8px',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginBottom: '-2px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
             >
-              組織分析ダッシュボード
+              <span>🏢</span> 組織分析ダッシュボード
+            </button>
+            <button 
+              className={`tab-item ${resultsSubTab === 'history' ? 'active' : ''}`}
+              onClick={() => setResultsSubTab('history')}
+              style={{
+                background: 'none',
+                border: 'none',
+                borderBottom: resultsSubTab === 'history' ? '3px solid #2563eb' : '3px solid transparent',
+                color: resultsSubTab === 'history' ? '#2563eb' : '#64748b',
+                fontWeight: resultsSubTab === 'history' ? 700 : 500,
+                padding: '12px 8px',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginBottom: '-2px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <span>📅</span> 実施履歴・回号選択
             </button>
           </div>
 
@@ -1829,6 +2300,166 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
               )}
             </div>
           )}
+
+          {/* 2.3 実施履歴・回号選択サブタブ */}
+          {resultsSubTab === 'history' && (
+            <div className="fade-in">
+              <div className="mb-4" style={{ background: 'rgba(37, 99, 235, 0.04)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                <p style={{ fontSize: '0.82rem', color: '#1e3a8a', margin: 0, fontWeight: 600 }}>
+                  💡 過去に実施されたストレスチェック回号を選択すると、結果一覧やダッシュボード、設定のレビュー表示がその回号のデータに瞬時に切り替わります。
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {campaignHistory.map((item) => {
+                  const campResults = results.filter(r => r.campaignName === item.campaignName);
+                  const campCompleted = campResults.length;
+                  const campTotal = item.campaignName === '令和7年度 秋期定期ストレスチェック' 
+                    ? (activeUser?.corporationId === 'CORP002' ? 4 : 50)
+                    : item.campaignName === '令和7年度 春期定期ストレスチェック'
+                      ? 48
+                      : employees.filter(e => e.status === 'active').length;
+                  const campRate = campTotal > 0 ? Math.round((campCompleted / campTotal) * 100) : 0;
+                  const campHighStress = campResults.filter(r => r.isHighStress).length;
+                  const isActive = item.status === 'active';
+
+                  return (
+                    <div 
+                      key={item.campaignName}
+                      className="card"
+                      style={{
+                        padding: '1.25rem',
+                        border: selectedCampaignName === item.campaignName ? '2px solid var(--primary)' : '1px solid #e2e8f0',
+                        borderRadius: '12px',
+                        background: selectedCampaignName === item.campaignName ? 'rgba(37, 99, 235, 0.02)' : '#ffffff',
+                        boxShadow: selectedCampaignName === item.campaignName ? '0 4px 12px rgba(37, 99, 235, 0.08)' : '0 2px 4px rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '1rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', flex: '1 1 300px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                            {item.campaignName}
+                          </span>
+                          <span 
+                            style={{ 
+                              fontSize: '0.72rem', 
+                              fontWeight: 700, 
+                              padding: '2px 8px', 
+                              borderRadius: '12px',
+                              color: '#ffffff',
+                              background: isActive 
+                                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                                : 'linear-gradient(135deg, #64748b 0%, #475569 100%)'
+                            }}
+                          >
+                            {isActive ? '実施中' : '期間終了'}
+                          </span>
+                          {selectedCampaignName === item.campaignName && (
+                            <span 
+                              style={{ 
+                                fontSize: '0.72rem', 
+                                fontWeight: 700, 
+                                padding: '2px 8px', 
+                                borderRadius: '12px',
+                                color: 'var(--primary)',
+                                background: '#eff6ff',
+                                border: '1px solid var(--primary-light)'
+                              }}
+                            >
+                              表示中
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>
+                          ⏰ 実施期間: <span style={{ fontWeight: 600, color: '#1e293b' }}>{item.startDate.replace('T', ' ')} 〜 {item.endDate.replace('T', ' ')}</span>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '350px', marginTop: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 700 }}>
+                            <span style={{ color: '#475569' }}>受検進捗: {campCompleted}名 / {campTotal}名</span>
+                            <span style={{ color: isActive ? 'var(--primary)' : '#475569' }}>{campRate}%</span>
+                          </div>
+                          <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div 
+                              style={{ 
+                                height: '100%', 
+                                width: `${campRate}%`, 
+                                background: isActive 
+                                  ? 'linear-gradient(90deg, var(--primary) 0%, #3b82f6 100%)' 
+                                  : 'linear-gradient(90deg, #64748b 0%, #94a3b8 100%)',
+                                borderRadius: '3px',
+                                transition: 'width 0.4s ease'
+                              }}
+                            />
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'flex', gap: '10px', marginTop: '2px' }}>
+                            <span>⚠️ 高ストレス: {campHighStress}名</span>
+                            <span>✉️ 同意率: {campCompleted > 0 ? Math.round((campResults.filter(r => r.consentDisclose).length / campCompleted) * 100) : 0}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedCampaignName(item.campaignName);
+                            setResultsSubTab('list');
+                            onNotify(`表示回号を「${item.campaignName}」に切り替えて、結果一覧へ移動しました。`, 'success');
+                          }}
+                          className="btn btn-outline"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.78rem',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            borderColor: 'var(--primary-light)',
+                            color: 'var(--primary)',
+                            background: '#eff6ff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Search size={13} />
+                          結果一覧を表示
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCampaignName(item.campaignName);
+                            setResultsSubTab('dashboard');
+                            loadResultsAndEmployees(activeUser ? activeUser.corporationId : 'CORP001');
+                            onNotify(`表示回号を「${item.campaignName}」に切り替えて、組織分析ダッシュボードへ移動しました。`, 'success');
+                          }}
+                          className="btn btn-primary"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '0.78rem',
+                            borderRadius: '6px',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <BarChart2 size={13} />
+                          組織分析を表示
+                        </button>
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1836,7 +2467,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
           タブ3: 従業員マスタ管理 (CRUD)
           ========================================== */}
       {activeTab === 'employees' && (
-        <div className="card" style={{ maxWidth: '800px' }}>
+        <div className="card" style={{ maxWidth: '1050px' }}>
           <EmployeeManager onNotify={onNotify} activeCorpId={activeUser ? activeUser.corporationId : 'CORP001'} />
         </div>
       )}

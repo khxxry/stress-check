@@ -187,6 +187,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding: 4px 8px 8px 4px;
+  margin: -4px -8px -8px -4px;
 }
 
 .option-btn {
@@ -941,3 +943,63 @@ body {
   from { transform: translateY(-10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* ==========================================
+   共通プレミアム・トグルスイッチUI
+   ========================================== */
+.status-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.status-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.status-slider {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background-color: #cbd5e1;
+  border-radius: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.status-slider::before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+.status-switch input:checked + .status-slider {
+  background: linear-gradient(135deg, var(--primary) 0%, #1e3a8a 100%);
+}
+.status-switch input:checked + .status-slider::before {
+  transform: translateX(16px);
+}
+.status-switch:hover .status-slider {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15), 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+.status-switch-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  transition: color 0.2s ease;
+  min-width: 28px;
+}
+.status-switch input:checked ~ .status-switch-label {
+  color: #16a34a;
+}
+

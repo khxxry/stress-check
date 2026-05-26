@@ -506,7 +506,7 @@ export const ExamineePortal: React.FC<ExamineePortalProps> = ({ onNotify, onComp
             ゲスト（デモ・テスト用）として受検する
           </button>
           <div className="feature-info mt-4" style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            💡 <strong>テストガイド:</strong> テクノロジーラボは `CORP001` + `EMP001`、グローバル営業本部は `CORP002` + `EMP013` でログイン可能です。
+            💡 <strong>テストガイド:</strong> テクノロジーラボは `CORP001` + `EMP001`、グローバル営業本部は `CORP002` + `EMP055` でログイン可能です。
           </div>
         </div>
       )}

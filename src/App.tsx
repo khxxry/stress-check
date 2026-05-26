@@ -21,7 +21,7 @@ const App: React.FC = () => {
     const now = new Date();
     
     // シードデータのバージョン管理（バージョンが変わったら自動で古いデータをクリアして強制再シード）
-    const TARGET_SEED_VERSION = 'v51_seeds';
+    const TARGET_SEED_VERSION = 'v52_seeds';
     const currentSeedVersion = localStorage.getItem('stress_check_seed_version');
     if (currentSeedVersion !== TARGET_SEED_VERSION) {
       localStorage.removeItem('stress_check_corporations');
@@ -34,6 +34,9 @@ const App: React.FC = () => {
       localStorage.removeItem('stress_check_campaign_CORP002');
       localStorage.removeItem('stress_check_consent_CORP002');
       localStorage.removeItem('stress_check_interview_CORP002');
+      // 過去回号の設定履歴もクリアするため
+      localStorage.removeItem('stress_check_campaign_history_CORP001');
+      localStorage.removeItem('stress_check_campaign_history_CORP002');
       localStorage.setItem('stress_check_seed_version', TARGET_SEED_VERSION);
     }
 
@@ -269,6 +272,103 @@ const App: React.FC = () => {
           consentDisclose: true,
           requestInterview: false,
           completedAt: new Date(now.getTime() - (i - 50) * 24 * 60 * 60 * 1000).toISOString()
+        });
+      }
+
+      // ──────────────────────────────────────────
+      // 過去回号の診断結果シードデータ (マルチ回号検証用)
+      // ──────────────────────────────────────────
+      
+      // A.1 テナント1 (CORP001) 過去回号: 令和7年度 秋期定期ストレスチェック (48名受検完了 / 50名登録)
+      for (let i = 1; i <= 48; i++) {
+        const empCode = `EMP${String(i).padStart(3, '0')}`;
+        const isFemale = i % 2 === 0;
+        const gender: Gender = isFemale ? 'female' : 'male';
+        
+        const dummyAnswers: Record<number, number> = {};
+        for (let q = 1; q <= 57; q++) {
+          const isHigh = i % 5 === 0; // 過去の秋期は5の倍数を高ストレスにする
+          if (isHigh) {
+            dummyAnswers[q] = q % 3 === 0 ? 1 : 4;
+          } else {
+            dummyAnswers[q] = q % 3 === 0 ? 4 : 1;
+          }
+        }
+
+        const score = calculateScoring(dummyAnswers, gender);
+        seedResults.push({
+          id: `${empCode}-CORP001-seed-2025fall`,
+          corporationId: 'CORP001',
+          employeeCode: empCode,
+          campaignName: '令和7年度 秋期定期ストレスチェック',
+          answers: dummyAnswers,
+          subscales: score.subscales,
+          totalReactionScore: score.totalReactionScore,
+          totalStressorSupportScore: score.totalStressorSupportScore,
+          isHighStress: score.isHighStress,
+          consentDisclose: i % 7 !== 0, // 7の倍数は不同意
+          requestInterview: i % 15 === 0, 
+          completedAt: new Date(now.getTime() - 220 * 24 * 60 * 60 * 1000 - i * 4 * 60 * 60 * 1000).toISOString() // 約220日前 (2025年10月頃)
+        });
+      }
+
+      // A.2 テナント1 (CORP001) 過去回号: 令和7年度 春期定期ストレスチェック (45名受検完了 / 48名登録)
+      for (let i = 1; i <= 45; i++) {
+        const empCode = `EMP${String(i).padStart(3, '0')}`;
+        const isFemale = i % 2 === 0;
+        const gender: Gender = isFemale ? 'female' : 'male';
+        
+        const dummyAnswers: Record<number, number> = {};
+        for (let q = 1; q <= 57; q++) {
+          const isHigh = i % 6 === 0; // 過去の春期は6の倍数を高ストレスにする
+          if (isHigh) {
+            dummyAnswers[q] = q % 3 === 0 ? 1 : 4;
+          } else {
+            dummyAnswers[q] = q % 3 === 0 ? 4 : 1;
+          }
+        }
+
+        const score = calculateScoring(dummyAnswers, gender);
+        seedResults.push({
+          id: `${empCode}-CORP001-seed-2025spring`,
+          corporationId: 'CORP001',
+          employeeCode: empCode,
+          campaignName: '令和7年度 春期定期ストレスチェック',
+          answers: dummyAnswers,
+          subscales: score.subscales,
+          totalReactionScore: score.totalReactionScore,
+          totalStressorSupportScore: score.totalStressorSupportScore,
+          isHighStress: score.isHighStress,
+          consentDisclose: i % 9 !== 0, // 9の倍数は不同意
+          requestInterview: i % 18 === 0, 
+          completedAt: new Date(now.getTime() - 370 * 24 * 60 * 60 * 1000 - i * 4 * 60 * 60 * 1000).toISOString() // 約370日前 (2025年5月頃)
+        });
+      }
+
+      // B.1 テナント2 (CORP002) 過去回号: 令和7年度 秋期定期ストレスチェック (4名受検完了 / 4名登録)
+      for (let i = 55; i <= 58; i++) {
+        const empCode = `EMP${String(i).padStart(3, '0')}`;
+        const gender: Gender = i === 56 ? 'female' : 'male';
+        
+        const dummyAnswers: Record<number, number> = {};
+        for (let q = 1; q <= 57; q++) {
+          dummyAnswers[q] = q % 4 === 0 ? 1 : 3;
+        }
+
+        const score = calculateScoring(dummyAnswers, gender);
+        seedResults.push({
+          id: `${empCode}-CORP002-seed-2025fall`,
+          corporationId: 'CORP002',
+          employeeCode: empCode,
+          campaignName: '令和7年度 秋期定期ストレスチェック',
+          answers: dummyAnswers,
+          subscales: score.subscales,
+          totalReactionScore: score.totalReactionScore,
+          totalStressorSupportScore: score.totalStressorSupportScore,
+          isHighStress: score.isHighStress,
+          consentDisclose: true,
+          requestInterview: false,
+          completedAt: new Date(now.getTime() - 220 * 24 * 60 * 60 * 1000 - (i - 54) * 24 * 60 * 60 * 1000).toISOString()
         });
       }
 
