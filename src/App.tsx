@@ -20,6 +20,23 @@ const App: React.FC = () => {
   useEffect(() => {
     const now = new Date();
     
+    // シードデータのバージョン管理（バージョンが変わったら自動で古いデータをクリアして強制再シード）
+    const TARGET_SEED_VERSION = 'v51_seeds';
+    const currentSeedVersion = localStorage.getItem('stress_check_seed_version');
+    if (currentSeedVersion !== TARGET_SEED_VERSION) {
+      localStorage.removeItem('stress_check_corporations');
+      localStorage.removeItem('stress_check_corporate_users');
+      localStorage.removeItem('stress_check_employees');
+      localStorage.removeItem('stress_check_results');
+      localStorage.removeItem('stress_check_campaign_CORP001');
+      localStorage.removeItem('stress_check_consent_CORP001');
+      localStorage.removeItem('stress_check_interview_CORP001');
+      localStorage.removeItem('stress_check_campaign_CORP002');
+      localStorage.removeItem('stress_check_consent_CORP002');
+      localStorage.removeItem('stress_check_interview_CORP002');
+      localStorage.setItem('stress_check_seed_version', TARGET_SEED_VERSION);
+    }
+
     // 1. 企業マスタ (Corporations) のシード
     if (!localStorage.getItem('stress_check_corporations')) {
       const defaultCorps: Corporation[] = [
