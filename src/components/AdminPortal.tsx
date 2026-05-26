@@ -985,7 +985,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     status: 'active' as const
   };
 
-  const displayCampaignName = selectedCampaignSettings.campaignName;
   const displayStartDate = selectedCampaignSettings.startDate;
   const displayEndDate = selectedCampaignSettings.endDate;
   const displayCustomNoticeStart = selectedCampaignSettings.customNoticeStart;
