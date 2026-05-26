@@ -511,21 +511,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
   // 健康経営調査用データCSV出力機能
   // ==========================================
   const handleExportMETICSV = () => {
+    // 選択された回号でフィルタリングされた受検結果
+    const campaignResults = results.filter(r => r.campaignName === selectedCampaignName);
+
     // 統計計算
     const totalActive = employees.filter(e => e.status === 'active').length;
-    const completed = results.length;
+    const completed = campaignResults.length;
     const rate = totalActive > 0 ? ((completed / totalActive) * 100).toFixed(1) : '0';
 
     // 性別受検率
     const activeMale = employees.filter(e => e.status === 'active' && e.gender === 'male').length;
-    const completedMale = results.filter(r => {
+    const completedMale = campaignResults.filter(r => {
       const emp = employees.find(e => e.employeeCode === r.employeeCode);
       return emp?.gender === 'male';
     }).length;
     const maleRate = activeMale > 0 ? ((completedMale / activeMale) * 100).toFixed(1) : '0';
 
     const activeFemale = employees.filter(e => e.status === 'active' && e.gender === 'female').length;
-    const completedFemale = results.filter(r => {
+    const completedFemale = campaignResults.filter(r => {
       const emp = employees.find(e => e.employeeCode === r.employeeCode);
       return emp?.gender === 'female';
     }).length;
@@ -533,7 +536,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
 
     // 年代計算用
     const ageBrackets: Record<string, number> = { '20代以下': 0, '30代': 0, '40代': 0, '50代': 0, '60代以上': 0 };
-    results.forEach(res => {
+    campaignResults.forEach(res => {
       const emp = employees.find(e => e.employeeCode === res.employeeCode);
       if (emp && emp.birthDate) {
         const age = new Date().getFullYear() - new Date(emp.birthDate).getFullYear();
@@ -548,9 +551,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onNotify }) => {
     const highStressRate = completed > 0 ? ((highStressCount / completed) * 100).toFixed(1) : '0';
 
     // CSV文字列構築
-    let csvContent = '\uFEFF'; // Excel文字化け防止のBOM
+    let csvContent = '\uFEFF'; // Excel文字化け防止 of BOM
     csvContent += '健康経営度調査提出用 統計データ出力レポート\n';
-    csvContent += `キャンペーン名,${campaignName}\n`;
+    csvContent += `キャンペーン名,${selectedCampaignName}\n`;
     csvContent += `抽出日付,${new Date().toLocaleDateString()}\n\n`;
     
     csvContent += '■ 基礎統計項目\n';
