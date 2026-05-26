@@ -127,7 +127,7 @@ const App: React.FC = () => {
       localStorage.setItem('stress_check_interview_CORP002', JSON.stringify(defaultInterview));
     }
 
-    // 4. 従業員マスタシードデータ (16名、企業ID割り当て)
+    // 4. 従業員マスタシードデータ (54名 for CORP001, 4名 for CORP002)
     if (!localStorage.getItem('stress_check_employees')) {
       const defaultEmployees: Employee[] = [
         // テクノロジーラボ (CORP001) 所属: 12名
@@ -142,14 +142,46 @@ const App: React.FC = () => {
         { corporationId: 'CORP001', employeeCode: 'EMP009', name: '小林 礼子', nameKana: 'コバヤシ レイコ', gender: 'female', email: 'kobayashi@company.com', birthDate: '1994-06-14', status: 'active', department: '技術開発部' },
         { corporationId: 'CORP001', employeeCode: 'EMP010', name: '加藤 誠', nameKana: 'カトウ マコト', gender: 'male', email: 'kato@company.com', birthDate: '1980-03-31', status: 'active', department: '技術開発部' },
         { corporationId: 'CORP001', employeeCode: 'EMP011', name: '吉田 明美', nameKana: 'ヨシダ アケミ', gender: 'female', email: 'yoshida@company.com', birthDate: '1987-11-20', status: 'active', department: '技術開発部' },
-        { corporationId: 'CORP001', employeeCode: 'EMP012', name: '佐々木 弘', nameKana: 'ササキ ヒロシ', gender: 'male', email: 'sasaki@company.com', birthDate: '1975-10-05', status: 'active', department: '技術開発部' },
- 
-        // グローバル営業本部 (CORP002) 所属: 4名
-        { corporationId: 'CORP002', employeeCode: 'EMP013', name: '林 直樹', nameKana: 'ハヤシ ナオキ', gender: 'male', email: 'hayashi@company.com', birthDate: '1983-01-22', status: 'active', department: 'グローバル営業部' },
-        { corporationId: 'CORP002', employeeCode: 'EMP014', name: '清水 まどか', nameKana: 'シミズ マドカ', gender: 'female', email: 'shimizu@company.com', birthDate: '1991-04-17', status: 'active', department: 'グローバル営業部' },
-        { corporationId: 'CORP002', employeeCode: 'EMP015', name: '山崎 拓也', nameKana: 'ヤマザキ タクヤ', gender: 'male', email: 'yamazaki@company.com', birthDate: '1986-09-08', status: 'active', department: 'グローバル営業部' },
-        { corporationId: 'CORP002', employeeCode: 'EMP016', name: '森 佳代子', nameKana: 'モリ カヨコ', gender: 'female', email: 'mori@company.com', birthDate: '1993-11-12', status: 'active', department: 'グローバル営業部' }
+        { corporationId: 'CORP001', employeeCode: 'EMP012', name: '佐々木 弘', nameKana: 'ササキ ヒロシ', gender: 'male', email: 'sasaki@company.com', birthDate: '1975-10-05', status: 'active', department: '技術開発部' }
       ];
+
+      // 残りの42名を動的に追加して合計54名にする
+      const firstNames = ['健一', '洋子', '和也', '真由美', '隆', '直美', '博之', '恵子', '修', 'さくら', '大輔', '美紀'];
+      const lastNames = ['高橋', '渡辺', '佐藤', '田中', '山田', '中村', '小林', '加藤', '吉田', '佐々木', '山口', '松本'];
+      const depts = ['技術開発部', '人事総務部', '企画マーケティング部', 'グローバル営業部'];
+
+      for (let i = 13; i <= 54; i++) {
+        const empCode = `EMP${String(i).padStart(3, '0')}`;
+        const lastName = lastNames[i % lastNames.length];
+        const firstName = firstNames[i % firstNames.length];
+        const name = `${lastName} ${firstName}`;
+        const nameKana = 'テスト シャイン';
+        const gender = i % 2 === 0 ? 'female' : 'male';
+        const department = depts[i % depts.length];
+        const email = `test${i}@company.com`;
+        const birthDate = `19${80 + (i % 20)}-01-01`;
+
+        defaultEmployees.push({
+          corporationId: 'CORP001',
+          employeeCode: empCode,
+          name,
+          nameKana,
+          gender,
+          email,
+          birthDate,
+          status: 'active',
+          department
+        });
+      }
+
+      // グローバル営業本部 (CORP002) 所属: 4名 (EMP055〜EMP058)
+      defaultEmployees.push(
+        { corporationId: 'CORP002', employeeCode: 'EMP055', name: '林 直樹', nameKana: 'ハヤシ ナオキ', gender: 'male', email: 'hayashi@company.com', birthDate: '1983-01-22', status: 'active', department: 'グローバル営業部' },
+        { corporationId: 'CORP002', employeeCode: 'EMP056', name: '清水 まどか', nameKana: 'シミズ マドカ', gender: 'female', email: 'shimizu@company.com', birthDate: '1991-04-17', status: 'active', department: 'グローバル営業部' },
+        { corporationId: 'CORP002', employeeCode: 'EMP057', name: '山崎 拓也', nameKana: 'ヤマザキ タクヤ', gender: 'male', email: 'yamazaki@company.com', birthDate: '1986-09-08', status: 'active', department: 'グローバル営業部' },
+        { corporationId: 'CORP002', employeeCode: 'EMP058', name: '森 佳代子', nameKana: 'モリ カヨコ', gender: 'female', email: 'mori@company.com', birthDate: '1993-11-12', status: 'active', department: 'グローバル営業部' }
+      );
+
       localStorage.setItem('stress_check_employees', JSON.stringify(defaultEmployees));
     }
 
@@ -157,19 +189,19 @@ const App: React.FC = () => {
     if (!localStorage.getItem('stress_check_results')) {
       const seedResults: ExamineeResult[] = [];
 
-      // A. テナント1 (CORP001): 10名受検完了 (匿名性保護 10名基準を突破)
-      for (let i = 1; i <= 10; i++) {
+      // A. テナント1 (CORP001): 45名受検完了 (54名中)
+      for (let i = 1; i <= 45; i++) {
         const empCode = `EMP${String(i).padStart(3, '0')}`;
-        const isFemale = i === 2 || i === 5 || i === 7 || i === 9;
+        const isFemale = i % 2 === 0;
         const gender: Gender = isFemale ? 'female' : 'male';
         
         const dummyAnswers: Record<number, number> = {};
         for (let q = 1; q <= 57; q++) {
-          const isStressy = i <= 3;
-          if (isStressy) {
-            dummyAnswers[q] = q % 3 === 0 ? 1 : 4; // 高ストレス
+          const isHigh = i % 4 === 0; // 4の倍数の従業員は高ストレスにする
+          if (isHigh) {
+            dummyAnswers[q] = q % 3 === 0 ? 1 : 4;
           } else {
-            dummyAnswers[q] = q % 3 === 0 ? 4 : 1; // 低ストレス
+            dummyAnswers[q] = q % 3 === 0 ? 4 : 1;
           }
         }
 
@@ -184,26 +216,26 @@ const App: React.FC = () => {
           totalReactionScore: score.totalReactionScore,
           totalStressorSupportScore: score.totalStressorSupportScore,
           isHighStress: score.isHighStress,
-          consentDisclose: i !== 5, // EMP005 は開示「不同意」
-          requestInterview: i === 1, // EMP001 は医師面接を希望
-          interviewDetails: i === 1 ? {
-            phone: '090-1234-5678',
-            email: 'yamada@company.com',
-            preferredSlots: ['6月1日 午前10時', '6月2日 午後14時', '6月3日 終日可'],
-            comments: '最近新しいシステム開発で残業が増え、疲労が溜まっています。'
+          consentDisclose: i % 8 !== 0, // 8の倍数は開示「不同意」
+          requestInterview: i % 12 === 0, // 12の倍数は医師面接を希望
+          interviewDetails: i % 12 === 0 ? {
+            phone: '090-9999-8888',
+            email: `test${i}@company.com`,
+            preferredSlots: ['6月1日 午前10時', '6月2日 午後14時'],
+            comments: '産業医面談を希望します。疲労が抜けない状態が続いています。'
           } : undefined,
-          completedAt: new Date(now.getTime() - i * 24 * 60 * 60 * 1000).toISOString()
+          completedAt: new Date(now.getTime() - i * 12 * 60 * 60 * 1000).toISOString()
         });
       }
 
-      // B. テナント2 (CORP002): 3名受検完了 (匿名性保護 10名基準未満 ➜ ロック確認用)
-      for (let i = 13; i <= 15; i++) {
+      // B. テナント2 (CORP002): 3名受検完了
+      for (let i = 55; i <= 57; i++) {
         const empCode = `EMP${String(i).padStart(3, '0')}`;
-        const gender: Gender = i === 14 ? 'female' : 'male';
+        const gender: Gender = i === 56 ? 'female' : 'male';
         
         const dummyAnswers: Record<number, number> = {};
         for (let q = 1; q <= 57; q++) {
-          dummyAnswers[q] = q % 3 === 0 ? 3 : 2; // 中ストレス度
+          dummyAnswers[q] = q % 3 === 0 ? 3 : 2;
         }
 
         const score = calculateScoring(dummyAnswers, gender);
@@ -219,7 +251,7 @@ const App: React.FC = () => {
           isHighStress: score.isHighStress,
           consentDisclose: true,
           requestInterview: false,
-          completedAt: new Date(now.getTime() - (i - 10) * 24 * 60 * 60 * 1000).toISOString()
+          completedAt: new Date(now.getTime() - (i - 50) * 24 * 60 * 60 * 1000).toISOString()
         });
       }
 
